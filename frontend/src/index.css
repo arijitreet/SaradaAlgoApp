@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased scroll-smooth;
+  }
+  body {
+    @apply bg-base-950 text-slate-200 font-sans;
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(99, 102, 241, 0.13), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(16, 185, 129, 0.07), transparent 60%);
+    background-attachment: fixed;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/10 rounded-full transition-colors;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::selection {
+    @apply bg-accent/30 text-white;
+  }
+}
+
+@layer components {
+  /* Glassmorphism surface used across the dashboard */
+  .glass {
+    @apply relative rounded-2xl border border-white/[0.07] bg-white/[0.035] backdrop-blur-xl shadow-glass;
+  }
+  /* Gradient-lit hairline edge — a 1px gradient ring drawn with a mask so only
+     the border shows. Stripped in Calm mode (see [data-calm] override below). */
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    /* Layer 1: a bright spot that tracks the cursor (--mx/--my set per-card in JS).
+       Layer 2: the base edge whose accent colour is per-card (--glass-edge).
+       The mask keeps both visible only on the 1px border ring. */
+    background:
+      radial-gradient(
+        500px circle at var(--mx, 50%) var(--my, -20%),
+        rgba(255, 255, 255, 0.95),
+        rgba(255, 255, 255, 0.25) 22%,
+        transparent 60%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.2),
+        rgba(255, 255, 255, 0.02) 38%,
+        var(--glass-edge, rgba(99, 102, 241, 0.22))
+      );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.9;
+  }
+  /* Interior "flashlight" that follows the cursor. z-index:-1 keeps it behind the
+     card's content (text stays crisp) but above the surface fill — the backdrop
+     blur on .glass establishes a stacking context so -1 stays inside the card.
+     Fades in only on hover; stripped in Calm mode. */
+  .glass::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    background: radial-gradient(
+      380px circle at var(--mx, 50%) var(--my, 50%),
+      color-mix(in srgb, var(--glass-edge, rgba(99, 102, 241, 0.22)) 40%, transparent),
+      transparent 55%
+    );
+  }
+  .glass:hover::after {
+    opacity: 1;
+  }
+  .glass-hover {
+    @apply transition-[border-color,background-color,box-shadow] duration-300 ease-out hover:border-white/[0.14] hover:bg-white/[0.055] hover:shadow-[0_18px_50px_-18px_rgba(0,0,0,0.6)];
+  }
+
+  /* Ambient aurora blobs (see AmbientBackground.tsx) */
+  .aurora-blob {
+    @apply absolute rounded-full;
+    filter: blur(72px);
+    opacity: 0.55;
+    will-change: transform;
+    /* opacity tweens when the P&L hue shifts (set per-blob in AmbientBackground) */
+    transition: opacity 1.4s ease;
+  }
+  /* Faint film grain over the ambient layer */
+  .grain {
+    @apply absolute inset-0;
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  /* Odometer digit column — slides to the active digit on value change */
+  .roll-col {
+    transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .stat-label {
+    @apply text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500;
+  }
+  .num {
+    @apply font-mono tabular-nums;
+  }
+
+  /* Animated gradient text — used for hero headline figures */
+  .text-gradient-animate {
+    @apply bg-size-200 bg-gradient-to-r bg-clip-text text-transparent animate-gradient-x;
+  }
+
+  /* Soft blurred orb used for ambient floating background accents */
+  .orb {
+    @apply pointer-events-none absolute rounded-full blur-3xl;
+  }
+
+  /* Sweeping shine overlay, triggered via group-hover on a `relative overflow-hidden` parent */
+  .shine-sweep {
+    @apply pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0;
+  }
+  .group:hover .shine-sweep {
+    @apply opacity-100 animate-shine;
+  }
+
+  /* Animated focus ring for inputs */
+  .input-glow {
+    @apply transition-all duration-300 ease-out focus:shadow-[0_0_0_4px_rgba(99,102,241,0.15)];
+  }
+}
+
+@layer utilities {
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+}
+
+/* ── Aurora drift keyframes ── */
+@keyframes aurora-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(70px, 50px) scale(1.12); }
+}
+@keyframes aurora-2 {
+  0%, 100% { transform: translate(0, 0) scale(1.05); }
+  50% { transform: translate(-60px, -40px) scale(0.92); }
+}
+@keyframes aurora-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-50px, 60px) scale(1.15); }
+}
+
+/* ── Calm mode: strip every ambient effect back to the flat look ── */
+[data-calm="true"] .glass::before { display: none; }
+[data-calm="true"] .glass::after { display: none; }
+[data-calm="true"] .roll-col { transition: none; }
+
+/* ── Respect the OS reduced-motion preference ── */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob { animation: none !important; }
+  .roll-col { transition: none !important; }
+}

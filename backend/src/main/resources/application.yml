@@ -1,0 +1,89 @@
+spring:
+  application:
+    name: sarada-trading
+  profiles:
+    default: live
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:h2:file:./data/sarada;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: Asia/Kolkata
+  flyway:
+    locations: classpath:db/migration
+  web:
+    resources:
+      static-locations: file:../frontend/dist/,classpath:/META-INF/resources/,classpath:/resources/,classpath:/static/,classpath:/public/
+
+server:
+  port: 8080
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: never
+
+app:
+  broker-mode: LIVE
+  timezone: Asia/Kolkata
+  security:
+    jwt-secret: ${APP_JWT_SECRET}
+    jwt-ttl-minutes: 720
+    crypto-key: ${APP_CRYPTO_KEY}
+    admin-username: ${APP_ADMIN_USERNAME:admin}
+    admin-password: ${APP_ADMIN_PASSWORD}
+    cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
+  kite:
+    api-key: ${KITE_API_KEY:}
+    api-secret: ${KITE_API_SECRET:}
+    redirect-url: ${KITE_REDIRECT_URL:http://localhost:8080/api/broker/callback}
+  trading:
+    underlying: NIFTY 50            # index tracked by the strategy
+    underlying-exchange: NSE
+    option-exchange: NFO
+    lot-size: 65          # NSE NIFTY lot size revised 75 → 65 effective Jan 2026
+    quantity-lots: 1
+    strike-step: 50
+    session-start: "09:20"
+    session-end: "15:05"
+    first-candle-start: "09:15"
+    candle-minutes: 5
+    max-trades-per-day: 5
+    expiry-rollover-days: 0          # roll to next weekly on expiry day itself if past cutoff
+    expiry-rollover-cutoff: "14:30"
+  risk:
+    stop-loss-points: 25
+    target1-points: 25
+    target2-points: 50
+    target2-stop-offset: 30          # SL = entry + 30 once T2 hit
+    trail-step-points: 25            # +25 SL for every +25 beyond T2
+  strategy:
+    first-candle-breakout:
+      ema-fast: 9
+      ema-slow: 15
+      atr-period: 14
+      min-atr-points: 8              # volatility filter: skip signals when ATR below this
+      sr-lookback: 20                # candles used for support/resistance pivots
+    supertrend-flip:
+      atr-period: 10                 # Wilder ATR period for Supertrend
+      multiplier: 3.0                # band width factor (ATR × multiplier)
+      strike-offset: 0               # 0 = nearest ITM/ATM; 1 = 1-strike OTM, etc.
+
+logging:
+  level:
+    com.sarada.trading: INFO
+    # Set to DEBUG to see per-poll order status lines and full Kite request details:
+    # com.sarada.trading.broker: DEBUG
+
