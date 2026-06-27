@@ -10,6 +10,7 @@ import LoginPage from "@/pages/LoginPage";
 // dashboard load no longer ships History / Analytics / Settings (and the heavy
 // recharts code they pull in) until the user actually navigates there.
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
+const StocksPage = lazy(() => import("@/pages/StocksPage"));
 const HistoryPage = lazy(() => import("@/pages/HistoryPage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
@@ -52,6 +53,7 @@ export default function App() {
         >
           <Routes location={location} key={location.pathname}>
             <Route path="/" element={<PageTransition><DashboardPage /></PageTransition>} />
+            <Route path="/stocks" element={<PageTransition><StocksPage /></PageTransition>} />
             <Route path="/history" element={<PageTransition><HistoryPage /></PageTransition>} />
             <Route path="/analytics" element={<PageTransition><AnalyticsPage /></PageTransition>} />
             <Route path="/settings" element={<PageTransition><SettingsPage /></PageTransition>} />

@@ -5,6 +5,7 @@ import {
   BarChart3,
   History,
   LayoutDashboard,
+  LineChart,
   LogOut,
   Settings,
   Sparkles,
@@ -27,6 +28,7 @@ import { AnimatedNumber } from "@/components/ui/animated-number";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/stocks", label: "Stocks", icon: LineChart },
   { to: "/history", label: "History", icon: History },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },

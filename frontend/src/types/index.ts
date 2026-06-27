@@ -208,3 +208,21 @@ export interface Page<T> {
   totalPages: number;
   number: number;
 }
+
+export interface GapDownStock {
+  symbol: string;
+  ltp: number;
+  todayOpen: number;
+  fifteenthDayClose: number;
+  gapDownPercent: number;
+  fifteenDayHigh: number;
+  fifteenDayLow: number;
+}
+
+export interface ScanResponse {
+  stocks: GapDownStock[];
+  scanTime: string | null;
+  scanned: number;
+  scanning: boolean;
+  error: string | null;
+}
