@@ -42,8 +42,8 @@ app:
     jwt-secret: ${APP_JWT_SECRET}
     jwt-ttl-minutes: 720
     crypto-key: ${APP_CRYPTO_KEY}
-    admin-username: ${APP_ADMIN_USERNAME:admin}
-    admin-password: ${APP_ADMIN_PASSWORD}
+    admin-username: ${APP_ADMIN_USERNAME:sarada}
+    admin-password: ${APP_ADMIN_PASSWORD:Sarada@123}
     cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
   kite:
     api-key: ${KITE_API_KEY:}
@@ -60,7 +60,7 @@ app:
     session-end: "15:05"
     first-candle-start: "09:15"
     candle-minutes: 5
-    max-trades-per-day: 5
+    max-trades-per-day: 3
     expiry-rollover-days: 0          # roll to next weekly on expiry day itself if past cutoff
     expiry-rollover-cutoff: "14:30"
   risk:

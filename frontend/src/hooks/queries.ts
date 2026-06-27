@@ -9,6 +9,7 @@ import type {
   OrderView,
   Page,
   PositionView,
+  ScanResponse,
   SessionStatus,
   StrategyPerformanceView,
   SupertrendConfig,
@@ -139,5 +140,24 @@ export const useUpdateSupertrendConfig = () => {
       queryClient.invalidateQueries({ queryKey: ["supertrend-config"] });
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
+  });
+};
+
+export const useGapDownScanner = () => {
+  const { data } = useQuery({
+    queryKey: ["gap-down-scanner"],
+    queryFn: () => api.get<ScanResponse>("/stocks/gap-down-scanner"),
+    refetchInterval: (query) =>
+      query.state.data?.scanning ? 3_000 : 60_000,
+  });
+  return data ?? { stocks: [], scanTime: null, scanned: 0, scanning: false, error: null };
+};
+
+export const useRefreshGapDownScan = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<ScanResponse>("/stocks/gap-down-scanner/refresh"),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["gap-down-scanner"] }),
   });
 };

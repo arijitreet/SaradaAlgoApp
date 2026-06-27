@@ -4,6 +4,7 @@ import { IndianRupee, Target, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmtInrPrecise, pnlColor } from "@/lib/format";
 import { useLiveStore } from "@/stores/liveStore";
+import { useSettings } from "@/hooks/queries";
 import { useUiStore } from "@/stores/uiStore";
 import { Badge } from "@/components/ui/badge";
 import { AnimatedNumber } from "@/components/ui/animated-number";
@@ -17,6 +18,8 @@ export function PnlHeroCard() {
   const pnl = useLiveStore((s) => s.pnl);
   const position = useLiveStore((s) => s.position);
   const calm = useUiStore((s) => s.calmMode);
+  const { data: settings } = useSettings();
+  const maxTrades = (settings?.trading as Record<string, unknown>)?.maxTradesPerDay as number ?? 3;
 
   const total = pnl?.total ?? 0;
   const positive = total >= 0;
@@ -125,7 +128,7 @@ export function PnlHeroCard() {
           </div>
           <div className="num mt-1 text-base font-bold text-slate-200">
             {pnl?.trades ?? 0}
-            <span className="text-slate-500"> / 5</span>
+            <span className="text-slate-500"> / {maxTrades}</span>
           </div>
         </motion.div>
       </div>
