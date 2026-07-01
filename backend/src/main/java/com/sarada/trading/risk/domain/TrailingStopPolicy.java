@@ -1,49 +1,50 @@
 package com.sarada.trading.risk.domain;
 
 import com.sarada.trading.common.config.AppProperties;
+import com.sarada.trading.strategy.application.SupertrendFlipStrategy;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
-/**
- * Pure stop-loss ladder (all values are option-premium points):
- *
- *   entry          → SL = entry − 25
- *   gain ≥ +25 (T1) → SL = entry          (breakeven)
- *   gain ≥ +50 (T2) → SL = entry + 30     (locked profit)
- *   each further +25 → SL trails up by +25 (entry+55, entry+80, …)
- *
- * The stop never moves down.
- */
 @Component
 public class TrailingStopPolicy {
 
     public enum Stage { INITIAL, BREAKEVEN, LOCKED, TRAILING }
 
-    private final AppProperties.Risk risk;
+    private final AppProperties.Risk defaultRisk;
+    private final AppProperties props;
 
     public TrailingStopPolicy(AppProperties props) {
-        this.risk = props.risk();
+        this.defaultRisk = props.risk();
+        this.props = props;
     }
 
     public record StopState(BigDecimal stopLoss, Stage stage) {}
 
-    public StopState initial(BigDecimal entryPrice) {
+    public AppProperties.Risk riskFor(String strategyId) {
+        if (SupertrendFlipStrategy.ID.equals(strategyId)) {
+            return props.strategy().supertrendFlip().toRisk();
+        }
+        return defaultRisk;
+    }
+
+    public StopState initial(BigDecimal entryPrice, String strategyId) {
+        var risk = riskFor(strategyId);
         return new StopState(entryPrice.subtract(risk.stopLossPoints()), Stage.INITIAL);
     }
 
-    public BigDecimal target1(BigDecimal entryPrice) {
-        return entryPrice.add(risk.target1Points());
+    public BigDecimal target1(BigDecimal entryPrice, String strategyId) {
+        return entryPrice.add(riskFor(strategyId).target1Points());
     }
 
-    public BigDecimal target2(BigDecimal entryPrice) {
-        return entryPrice.add(risk.target2Points());
+    public BigDecimal target2(BigDecimal entryPrice, String strategyId) {
+        return entryPrice.add(riskFor(strategyId).target2Points());
     }
 
-    /** Recompute the stop for the current price; result is monotonically non-decreasing. */
     public StopState advance(BigDecimal entryPrice, BigDecimal currentPrice,
-                             BigDecimal currentStop, Stage currentStage) {
+                             BigDecimal currentStop, Stage currentStage, String strategyId) {
+        var risk = riskFor(strategyId);
         BigDecimal gain = currentPrice.subtract(entryPrice);
 
         BigDecimal candidateStop = currentStop;

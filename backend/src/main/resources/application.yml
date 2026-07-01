@@ -60,7 +60,7 @@ app:
     session-end: "15:05"
     first-candle-start: "09:15"
     candle-minutes: 5
-    max-trades-per-day: 3
+    max-trades-per-day: 6              # global across ALL strategies combined (resets daily)
     expiry-rollover-days: 0          # roll to next weekly on expiry day itself if past cutoff
     expiry-rollover-cutoff: "14:30"
   risk:
@@ -80,6 +80,37 @@ app:
       atr-period: 10                 # Wilder ATR period for Supertrend
       multiplier: 3.0                # band width factor (ATR × multiplier)
       strike-offset: 0               # 0 = nearest ITM/ATM; 1 = 1-strike OTM, etc.
+      stop-loss-points: 15           # tighter SL than FCB (15 vs 25)
+      target1-points: 15
+      target2-points: 30
+      target2-stop-offset: 15
+      trail-step-points: 15
+    multi-confluence-trend:
+      ema-fast: 9                    # 5-min EMA crossover (base signal)
+      ema-slow: 21
+      atr-period: 10                 # Supertrend confirmation
+      multiplier: 3.0
+      htf-ema-fast: 9                # 15-min higher-timeframe trend
+      htf-ema-slow: 21
+      strike-offset: 0               # uses default risk ladder (SL 25 / T2 50 = 1:2 R:R)
+    mean-reversion:
+      bb-period: 20                  # Bollinger Bands (20 SMA, 2 SD)
+      bb-std-dev: 2.0
+      rsi-period: 14
+      rsi-oversold: 30               # BUY CE when RSI below this at lower band
+      rsi-overbought: 70             # BUY PE when RSI above this at upper band
+      adx-period: 14
+      adx-threshold: 25              # only trade ranging markets (ADX < 25)
+      sl-bb-width-mult: 1.5          # index SL = entry ∓ 1.5 × BB width; target = mid BB
+      strike-offset: 0
+    vwap-strategy:
+      rsi-period: 14
+      reversion-rsi-buy-min: 40      # reversion BUY (VWAP reclaim) needs RSI > 40
+      reversion-rsi-sell-max: 60     # reversion SELL (VWAP loss) needs RSI < 60
+      band-std-dev: 1.0              # reversion target/stop at ±1 σ band
+      high-prob-std-dev: 2.0         # flag entries beyond ±2 σ as high-probability
+      breakout-hold-candles: 2       # closes past VWAP needed to confirm a breakout
+      strike-offset: 0
 
 logging:
   level:

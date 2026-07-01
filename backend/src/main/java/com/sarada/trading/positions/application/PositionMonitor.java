@@ -3,6 +3,7 @@ package com.sarada.trading.positions.application;
 import com.sarada.trading.common.events.DomainEvents;
 import com.sarada.trading.common.market.Tick;
 import com.sarada.trading.positions.domain.PositionEntity;
+import com.sarada.trading.positions.domain.UnderlyingPricePort;
 import com.sarada.trading.positions.infra.PositionRepository;
 import com.sarada.trading.risk.domain.TrailingStopPolicy;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -31,6 +33,7 @@ public class PositionMonitor {
     private final PositionRepository positions;
     private final PositionService positionService;
     private final TrailingStopPolicy stopPolicy;
+    private final UnderlyingPricePort underlyingPrice;
 
     private final Map<Long, Long> lastPushAt = new ConcurrentHashMap<>();
 
@@ -43,9 +46,16 @@ public class PositionMonitor {
     }
 
     private void manage(PositionEntity position, BigDecimal price) {
-        // 1. trail the stop
+        // Mean Reversion exits on the underlying-index level, not the option premium.
+        if (position.usesIndexExit()) {
+            manageIndexExit(position, price);
+            return;
+        }
+
+        // 1. trail the stop (risk params resolved per-strategy)
         TrailingStopPolicy.StopState advanced = stopPolicy.advance(
-                position.getEntryPrice(), price, position.getStopLoss(), position.getRiskStage());
+                position.getEntryPrice(), price, position.getStopLoss(),
+                position.getRiskStage(), position.getStrategyId());
         if (advanced.stopLoss().compareTo(position.getStopLoss()) > 0) {
             position.updateStop(advanced.stopLoss(), advanced.stage());
             positions.save(position);
@@ -68,7 +78,36 @@ public class PositionMonitor {
             return;
         }
 
-        // 3. live stream (max 2/sec per position)
+        streamPosition(position, price);
+    }
+
+    /**
+     * Index-based exit (Mean Reversion): exit when the UNDERLYING index reaches the
+     * BB-width stop or the mid-BB target. Direction-aware — a CE benefits from the index
+     * rising to target, a PE from it falling. The option premium is used only to stream P&L.
+     */
+    private void manageIndexExit(PositionEntity position, BigDecimal optionPrice) {
+        Optional<BigDecimal> liveIndex = underlyingPrice.underlyingLtp();
+        if (liveIndex.isPresent()) {
+            BigDecimal index = liveIndex.get();
+            String reason = position.indexExitReason(index);
+            if (reason != null) {
+                log.info("[MR] Index exit [{}] {} — index={} target={} stop={}", reason,
+                        position.getTradingsymbol(), index,
+                        position.getIndexTarget(), position.getIndexStopLoss());
+                try {
+                    positionService.exit(position.getId(), reason, "SYSTEM");
+                } catch (Exception e) {
+                    log.error("Auto-exit failed for {}: {}", position.getId(), e.getMessage());
+                }
+                return;
+            }
+        }
+        streamPosition(position, optionPrice);
+    }
+
+    /** Live position + P&L stream, throttled to max 2/sec per position. */
+    private void streamPosition(PositionEntity position, BigDecimal price) {
         long now = System.currentTimeMillis();
         Long last = lastPushAt.get(position.getId());
         if (last == null || now - last >= 500) {

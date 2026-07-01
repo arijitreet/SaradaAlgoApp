@@ -12,5 +12,10 @@ public record TradeSignal(
         IndicatorSnapshot indicators,
         String reason,
         Instant at,
-        int strikeOffset   // 0 = nearest ITM/ATM, 1 = 1-strike OTM, etc.
+        int strikeOffset,        // 0 = nearest ITM/ATM, 1 = 1-strike OTM, etc.
+        // Index-based exit levels (Mean Reversion only): when non-null, the position
+        // exits when the UNDERLYING index reaches these levels rather than via the
+        // option-premium trailing ladder. Null for all premium-managed strategies.
+        BigDecimal indexStopLoss,
+        BigDecimal indexTarget
 ) {}

@@ -14,5 +14,11 @@ public record IndicatorSnapshot(
         BigDecimal firstCandleLow,
         // Supertrend-specific (null for non-supertrend strategies)
         BigDecimal supertrendLine,
-        Boolean supertrendBullish
+        Boolean supertrendBullish,
+        // Mean Reversion / VWAP extras (null when not applicable)
+        BigDecimal bbUpper,
+        BigDecimal bbMiddle,
+        BigDecimal bbLower,
+        BigDecimal rsi,
+        BigDecimal adx
 ) {}

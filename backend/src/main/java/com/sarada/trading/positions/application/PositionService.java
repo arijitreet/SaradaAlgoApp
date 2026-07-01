@@ -52,15 +52,20 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
 
     @EventListener
     public void onEntryFilled(DomainEvents.EntryFilled event) {
-        TrailingStopPolicy.StopState initial = stopPolicy.initial(event.fillPrice());
+        String sid = event.signal().strategyId();
+        // Premium-ladder values are always populated (NOT NULL columns); for index-exit
+        // positions they are inert placeholders — PositionMonitor branches on the index levels.
+        TrailingStopPolicy.StopState initial = stopPolicy.initial(event.fillPrice(), sid);
         PositionEntity position = PositionEntity.open(
-                clock.tradingDay(), event.signal().strategyId(), null, event.orderId(),
+                clock.tradingDay(), sid, null, event.orderId(),
                 event.instrumentToken(), event.tradingsymbol(),
                 event.signal().type().optionType(), event.strike(), event.expiry(),
                 event.quantity(), event.fillPrice(),
                 initial.stopLoss(),
-                stopPolicy.target1(event.fillPrice()),
-                stopPolicy.target2(event.fillPrice()));
+                stopPolicy.target1(event.fillPrice(), sid),
+                stopPolicy.target2(event.fillPrice(), sid),
+                event.signal().indexStopLoss(),
+                event.signal().indexTarget());
         position = positions.save(position);
 
         log.info("Position OPEN {} x{} @ {} (SL {})", position.getTradingsymbol(),

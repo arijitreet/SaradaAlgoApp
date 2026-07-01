@@ -12,6 +12,9 @@ import type { StrategyPerformanceView } from "@/types";
 const LABELS: Record<string, string> = {
   "first-candle-breakout-v1": "First Candle Breakout",
   "supertrend-flip-v1": "Supertrend Flip",
+  "multi-confluence-trend-v1": "Multi-Confluence Trend",
+  "mean-reversion-v1": "Mean Reversion",
+  "vwap-strategy-v1": "VWAP Strategy",
 };
 
 const signedInr = (v: number) => `${v >= 0 ? "+" : ""}${fmtInrPrecise(v)}`;
@@ -101,6 +104,12 @@ function StrategyCard({ s }: { s: StrategyPerformanceView }) {
           ) : (
             <span className="text-slate-600">—</span>
           )}
+        </Row>
+        <Row label="Window">
+          <span className={cn("num", s.windowActive ? "text-profit" : "text-slate-500")}>
+            {s.activeWindow}
+            {s.windowActive && <span className="ml-1 text-[10px] uppercase tracking-wide">live</span>}
+          </span>
         </Row>
       </div>
     </motion.div>

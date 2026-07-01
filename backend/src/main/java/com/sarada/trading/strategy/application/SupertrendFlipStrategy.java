@@ -9,6 +9,7 @@ import com.sarada.trading.common.market.TradeSignal;
 import com.sarada.trading.common.time.TradingClock;
 import com.sarada.trading.strategy.domain.TradingStrategy;
 import com.sarada.trading.strategy.domain.indicators.Supertrend;
+import com.sarada.trading.strategy.domain.indicators.Vwap;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -22,9 +23,13 @@ import java.util.Optional;
  *  Entry rules
  *  ───────────
  *  • Bullish flip: candle N−1 was BELOW the Supertrend line (bearish trend)
- *                  and candle N closes ABOVE it → BUY CE (ATM + strikeOffset).
+ *                  and candle N closes ABOVE it AND close is ABOVE VWAP → BUY CE.
  *  • Bearish flip: candle N−1 was ABOVE the Supertrend line (bullish trend)
- *                  and candle N closes BELOW it → BUY PE (ATM + strikeOffset).
+ *                  and candle N closes BELOW it AND close is BELOW VWAP → BUY PE.
+ *
+ *  The VWAP confirmation (resets daily at 09:15 via {@link #reset()}) filters
+ *  flips that fight the day's volume-weighted bias. A flip whose VWAP side does
+ *  not confirm is skipped and won't re-fire (direction is consumed on the flip).
  *
  *  Guards
  *  ──────
@@ -51,6 +56,7 @@ public class SupertrendFlipStrategy implements TradingStrategy {
     private final SupertrendConfigService configService;
 
     private Supertrend supertrend;
+    private final Vwap vwap = new Vwap();
     private Boolean previousBullish;   // null = not yet initialised after warm-up
     private int candlesProcessed;
     private String lastEvaluation = "Warming up";
@@ -80,6 +86,7 @@ public class SupertrendFlipStrategy implements TradingStrategy {
         Boolean prevBullish = previousBullish;
 
         supertrend.update(candle);
+        vwap.update(candle);
         candlesProcessed++;
 
         if (!supertrend.isReady()) {
@@ -102,33 +109,46 @@ public class SupertrendFlipStrategy implements TradingStrategy {
 
         previousBullish = currentBullish;
 
+        BigDecimal close = candle.close();
+        BigDecimal vwapValue = vwap.value();
+        boolean aboveVwap = vwapValue != null && close.compareTo(vwapValue) > 0;
+        boolean belowVwap = vwapValue != null && close.compareTo(vwapValue) < 0;
+
         boolean bullishFlip = !prevBullish && currentBullish;
         boolean bearishFlip = prevBullish && !currentBullish;
 
         if (bullishFlip) {
+            if (!aboveVwap) {
+                lastEvaluation = String.format("Bullish flip skipped — close %.2f not above VWAP %.2f",
+                        close, vwapValue);
+                log.info("[ST] Bullish flip skipped (close {} ≤ VWAP {})", close, vwapValue);
+                return Optional.empty();
+            }
             lastEvaluation = String.format(
-                    "Bullish flip ↑  close=%.2f ST=%.2f  O=%.2f H=%.2f L=%.2f C=%.2f",
-                    candle.close(), supertrend.value(),
-                    candle.open(), candle.high(), candle.low(), candle.close());
-            log.info("[ST] BULLISH FLIP — BUY CE signal @ {} | ST={} | OHLC={}/{}/{}/{}",
-                    candle.close(), supertrend.value(),
-                    candle.open(), candle.high(), candle.low(), candle.close());
-            return Optional.of(signal(SignalType.BUY_CE, candle.close(),
-                    "Supertrend bullish flip: close " + candle.close()
-                            + " crossed above ST=" + supertrend.value()));
+                    "Bullish flip ↑  close=%.2f ST=%.2f VWAP=%.2f",
+                    close, supertrend.value(), vwapValue);
+            log.info("[ST] BULLISH FLIP — BUY CE signal @ {} | ST={} VWAP={}",
+                    close, supertrend.value(), vwapValue);
+            return Optional.of(signal(SignalType.BUY_CE, close,
+                    "Supertrend bullish flip: close " + close
+                            + " crossed above ST=" + supertrend.value() + " and above VWAP=" + vwapValue));
         }
 
         if (bearishFlip) {
+            if (!belowVwap) {
+                lastEvaluation = String.format("Bearish flip skipped — close %.2f not below VWAP %.2f",
+                        close, vwapValue);
+                log.info("[ST] Bearish flip skipped (close {} ≥ VWAP {})", close, vwapValue);
+                return Optional.empty();
+            }
             lastEvaluation = String.format(
-                    "Bearish flip ↓  close=%.2f ST=%.2f  O=%.2f H=%.2f L=%.2f C=%.2f",
-                    candle.close(), supertrend.value(),
-                    candle.open(), candle.high(), candle.low(), candle.close());
-            log.info("[ST] BEARISH FLIP — BUY PE signal @ {} | ST={} | OHLC={}/{}/{}/{}",
-                    candle.close(), supertrend.value(),
-                    candle.open(), candle.high(), candle.low(), candle.close());
-            return Optional.of(signal(SignalType.BUY_PE, candle.close(),
-                    "Supertrend bearish flip: close " + candle.close()
-                            + " crossed below ST=" + supertrend.value()));
+                    "Bearish flip ↓  close=%.2f ST=%.2f VWAP=%.2f",
+                    close, supertrend.value(), vwapValue);
+            log.info("[ST] BEARISH FLIP — BUY PE signal @ {} | ST={} VWAP={}",
+                    close, supertrend.value(), vwapValue);
+            return Optional.of(signal(SignalType.BUY_PE, close,
+                    "Supertrend bearish flip: close " + close
+                            + " crossed below ST=" + supertrend.value() + " and below VWAP=" + vwapValue));
         }
 
         lastEvaluation = String.format("No flip: %s  close=%.2f  ST=%.2f",
@@ -155,31 +175,33 @@ public class SupertrendFlipStrategy implements TradingStrategy {
     private TradeSignal signal(SignalType type, BigDecimal trigger, String reason) {
         return new TradeSignal(ID, type, underlying(), trigger, snapshot(), reason,
                 clock.now().toInstant(),
-                configService.current().strikeOffset());
+                configService.current().strikeOffset(), null, null);
     }
 
     @Override
     public synchronized IndicatorSnapshot snapshot() {
         return new IndicatorSnapshot(
-                null, null, null,               // emaFast, emaSlow, vwap — N/A
+                null, null, vwap.value(),       // emaFast, emaSlow — N/A; vwap now populated
                 null, null, null,               // atr, support, resistance — N/A
                 null, null,                     // firstCandleHigh, firstCandleLow — N/A
                 supertrend.value(),             // supertrendLine
-                supertrend.isReady() ? supertrend.isBullish() : null);  // supertrendBullish
+                supertrend.isReady() ? supertrend.isBullish() : null,   // supertrendBullish
+                null, null, null, null, null);  // bb / rsi / adx — N/A
     }
 
     @Override
     public synchronized Health health() {
         boolean ready = supertrend.isReady();
         boolean bull = ready && supertrend.isBullish();
+        BigDecimal vwapValue = vwap.value();
         return new Health(
                 /*firstCandleCaptured=*/ ready,            // reused: "ST initialised"
                 /*candlesProcessed=*/   candlesProcessed,
                 /*indicatorsReady=*/    ready,
                 /*emaBullish=*/         bull,              // reused: "Trend UP"
                 /*emaBearish=*/         ready && !bull,    // reused: "Trend DOWN"
-                /*aboveVwap=*/          false,             // N/A
-                /*belowVwap=*/          false,             // N/A
+                /*aboveVwap=*/          vwapValue != null && bull,
+                /*belowVwap=*/          vwapValue != null && ready && !bull,
                 /*atrPass=*/            ready,             // reused: "ATR seeded"
                 /*lastEvaluation=*/     lastEvaluation);
     }
@@ -188,6 +210,7 @@ public class SupertrendFlipStrategy implements TradingStrategy {
     public synchronized void reset() {
         var cfg = configService.current();
         this.supertrend = new Supertrend(cfg.atrPeriod(), cfg.multiplier());
+        vwap.reset();
         previousBullish = null;
         candlesProcessed = 0;
         lastEvaluation = "Reset for new trading day";

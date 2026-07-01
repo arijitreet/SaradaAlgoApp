@@ -5,6 +5,9 @@ import { useLiveStore } from "@/stores/liveStore";
 const STRATEGY_LABELS: Record<string, string> = {
   "first-candle-breakout-v1": "First Candle Breakout",
   "supertrend-flip-v1": "Supertrend Flip",
+  "multi-confluence-trend-v1": "Multi-Confluence Trend",
+  "mean-reversion-v1": "Mean Reversion",
+  "vwap-strategy-v1": "VWAP Strategy",
 };
 
 /**

@@ -149,7 +149,7 @@ public class FirstCandleBreakoutStrategy implements TradingStrategy {
 
     private TradeSignal signal(SignalType type, BigDecimal trigger, String reason) {
         return new TradeSignal(ID, type, underlying(), trigger, snapshot(), reason,
-                clock.now().toInstant(), 0);
+                clock.now().toInstant(), 0, null, null);
     }
 
     @Override
@@ -158,7 +158,8 @@ public class FirstCandleBreakoutStrategy implements TradingStrategy {
                 emaFast.value(), emaSlow.value(), vwap.value(), atr.value(),
                 supportResistance.support(), supportResistance.resistance(),
                 firstCandleHigh, firstCandleLow,
-                null, null);  // supertrendLine, supertrendBullish — N/A for this strategy
+                null, null,                 // supertrendLine, supertrendBullish — N/A
+                null, null, null, null, null);  // bb / rsi / adx — N/A
     }
 
     @Override

@@ -35,6 +35,7 @@ public class StrategyEngine {
     private final SignalRepository signals;
     private final ApplicationEventPublisher events;
     private final WsPublisher ws;
+    private final StrategyTimeWindows timeWindows;
 
     private volatile LocalDate currentDay;
 
@@ -78,6 +79,11 @@ public class StrategyEngine {
         publishHealth(strategy);
         if (!session.isRunning() || !clock.isWithinSession()) {
             log.info("Signal {} suppressed (session inactive)", signal.type());
+            return;
+        }
+        if (!timeWindows.isActive(strategy.id())) {
+            log.info("Signal {} suppressed — outside {} active window ({})",
+                    signal.type(), strategy.id(), timeWindows.windowLabel(strategy.id()));
             return;
         }
         SignalEntity entity = signals.save(SignalEntity.from(signal, clock.tradingDay()));

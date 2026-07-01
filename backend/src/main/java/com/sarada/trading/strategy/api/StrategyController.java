@@ -41,6 +41,7 @@ public class StrategyController {
     private final StrategyPerformancePort performance;
     private final TradingSessionService session;
     private final AppProperties props;
+    private final com.sarada.trading.strategy.application.StrategyTimeWindows timeWindows;
 
     public record StrategyView(String id, String underlying,
                                com.sarada.trading.common.market.IndicatorSnapshot indicators,
@@ -87,7 +88,8 @@ public class StrategyController {
             BigDecimal realizedPnl, BigDecimal unrealizedPnl, BigDecimal totalPnl,
             int trades, int maxTrades,
             StrategyPerformancePort.OpenPositionBrief openPosition,
-            LastSignalView lastSignal) {}
+            LastSignalView lastSignal,
+            String activeWindow, boolean windowActive) {}
 
     @GetMapping("/performance")
     public List<StrategyPerformanceView> performance() {
@@ -105,7 +107,8 @@ public class StrategyController {
                     return new StrategyPerformanceView(
                             s.id(), active,
                             pnl.realized(), pnl.unrealized(), pnl.realized().add(pnl.unrealized()),
-                            pnl.trades(), maxTrades, pnl.openPosition(), last);
+                            pnl.trades(), maxTrades, pnl.openPosition(), last,
+                            timeWindows.windowLabel(s.id()), timeWindows.isActive(s.id()));
                 })
                 .toList();
     }

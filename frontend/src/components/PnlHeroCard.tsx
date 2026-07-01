@@ -19,7 +19,10 @@ export function PnlHeroCard() {
   const position = useLiveStore((s) => s.position);
   const calm = useUiStore((s) => s.calmMode);
   const { data: settings } = useSettings();
-  const maxTrades = (settings?.trading as Record<string, unknown>)?.maxTradesPerDay as number ?? 3;
+  // Global daily cap (shared across all strategies); resets at 09:15 each day.
+  const maxTrades = (settings?.trading as Record<string, unknown>)?.maxTradesPerDay as number ?? 6;
+  const tradesUsed = pnl?.trades ?? 0;
+  const tradesLeft = Math.max(0, maxTrades - tradesUsed);
 
   const total = pnl?.total ?? 0;
   const positive = total >= 0;
@@ -127,9 +130,10 @@ export function PnlHeroCard() {
             <Target size={11} /> Trades
           </div>
           <div className="num mt-1 text-base font-bold text-slate-200">
-            {pnl?.trades ?? 0}
+            {tradesUsed}
             <span className="text-slate-500"> / {maxTrades}</span>
           </div>
+          <div className="mt-0.5 text-[10px] text-slate-500">{tradesLeft} left today</div>
         </motion.div>
       </div>
     </motion.div>

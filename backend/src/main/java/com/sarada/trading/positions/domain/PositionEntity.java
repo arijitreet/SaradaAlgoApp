@@ -70,6 +70,13 @@ public class PositionEntity {
     @Column(name = "risk_stage", nullable = false)
     private TrailingStopPolicy.Stage riskStage = TrailingStopPolicy.Stage.INITIAL;
 
+    // Index-based exit levels (Mean Reversion). Null = premium-managed (trailing ladder).
+    @Column(name = "index_stop_loss")
+    private BigDecimal indexStopLoss;
+
+    @Column(name = "index_target")
+    private BigDecimal indexTarget;
+
     @Column(name = "exit_price")
     private BigDecimal exitPrice;
 
@@ -93,7 +100,8 @@ public class PositionEntity {
                                       Long entryOrderId, long instrumentToken, String tradingsymbol,
                                       String optionType, BigDecimal strike, LocalDate expiry,
                                       int quantity, BigDecimal entryPrice,
-                                      BigDecimal stopLoss, BigDecimal target1, BigDecimal target2) {
+                                      BigDecimal stopLoss, BigDecimal target1, BigDecimal target2,
+                                      BigDecimal indexStopLoss, BigDecimal indexTarget) {
         PositionEntity position = new PositionEntity();
         position.tradingDay = tradingDay;
         position.strategyId = strategyId;
@@ -109,8 +117,40 @@ public class PositionEntity {
         position.stopLoss = stopLoss;
         position.target1 = target1;
         position.target2 = target2;
+        position.indexStopLoss = indexStopLoss;
+        position.indexTarget = indexTarget;
         position.openedAt = Instant.now();
         return position;
+    }
+
+    /** True when this position exits on the underlying-index level, not the option premium. */
+    public boolean usesIndexExit() {
+        return indexStopLoss != null && indexTarget != null;
+    }
+
+    /**
+     * For an index-managed position, the exit reason if the live index has reached a
+     * level, else null. Direction-aware: a CE profits as the index rises to target and
+     * stops as it falls; a PE is the mirror.
+     */
+    public String indexExitReason(BigDecimal liveIndex) {
+        if (!usesIndexExit()) {
+            return null;
+        }
+        boolean ce = "CE".equals(optionType);
+        boolean targetHit = ce
+                ? liveIndex.compareTo(indexTarget) >= 0
+                : liveIndex.compareTo(indexTarget) <= 0;
+        boolean stopHit = ce
+                ? liveIndex.compareTo(indexStopLoss) <= 0
+                : liveIndex.compareTo(indexStopLoss) >= 0;
+        if (targetHit) {
+            return "TARGET";
+        }
+        if (stopHit) {
+            return "STOP_LOSS";
+        }
+        return null;
     }
 
     public void updateStop(BigDecimal newStop, TrailingStopPolicy.Stage stage) {

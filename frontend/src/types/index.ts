@@ -31,6 +31,12 @@ export interface IndicatorSnapshot {
   // Supertrend fields — null for non-supertrend strategies
   supertrendLine: number | null;
   supertrendBullish: boolean | null;
+  // Mean Reversion / VWAP extras — null when not applicable
+  bbUpper: number | null;
+  bbMiddle: number | null;
+  bbLower: number | null;
+  rsi: number | null;
+  adx: number | null;
 }
 
 export interface StrategyHealth {
@@ -130,6 +136,8 @@ export interface StrategyPerformanceView {
     triggerPrice: number;
     at: string;
   } | null;
+  activeWindow: string;
+  windowActive: boolean;
 }
 
 export interface OrderView {

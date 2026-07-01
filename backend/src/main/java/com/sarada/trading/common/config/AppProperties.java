@@ -65,7 +65,10 @@ public record AppProperties(
 
     public record Strategy(
             FirstCandleBreakout firstCandleBreakout,
-            SupertrendFlip supertrendFlip
+            SupertrendFlip supertrendFlip,
+            MultiConfluenceTrend multiConfluenceTrend,
+            MeanReversion meanReversion,
+            VwapStrategy vwapStrategy
     ) {
         public record FirstCandleBreakout(
                 int emaFast,
@@ -78,7 +81,49 @@ public record AppProperties(
         public record SupertrendFlip(
                 int atrPeriod,
                 BigDecimal multiplier,
-                int strikeOffset   // 0 = nearest ITM/ATM, 1 = 1 strike OTM, etc.
+                int strikeOffset,
+                BigDecimal stopLossPoints,
+                BigDecimal target1Points,
+                BigDecimal target2Points,
+                BigDecimal target2StopOffset,
+                BigDecimal trailStepPoints
+        ) {
+            public Risk toRisk() {
+                return new Risk(stopLossPoints, target1Points, target2Points,
+                        target2StopOffset, trailStepPoints);
+            }
+        }
+
+        public record MultiConfluenceTrend(
+                int emaFast,            // 9 EMA on 5-min closes (base crossover)
+                int emaSlow,            // 21 EMA on 5-min closes
+                int atrPeriod,          // Supertrend ATR period
+                BigDecimal multiplier,  // Supertrend band multiplier
+                int htfEmaFast,         // 9 EMA on 15-min closes (higher-timeframe trend)
+                int htfEmaSlow,         // 21 EMA on 15-min closes
+                int strikeOffset
+        ) {}
+
+        public record MeanReversion(
+                int bbPeriod,               // Bollinger SMA period
+                BigDecimal bbStdDev,        // Bollinger band width in standard deviations
+                int rsiPeriod,
+                BigDecimal rsiOversold,     // BUY when RSI below this
+                BigDecimal rsiOverbought,   // SELL when RSI above this
+                int adxPeriod,
+                BigDecimal adxThreshold,    // only trade when ADX below this (ranging market)
+                BigDecimal slBbWidthMult,   // index SL distance = mult × BB width at entry
+                int strikeOffset
+        ) {}
+
+        public record VwapStrategy(
+                int rsiPeriod,
+                BigDecimal reversionRsiBuyMin,    // reversion BUY needs RSI above this (e.g. 40)
+                BigDecimal reversionRsiSellMax,   // reversion SELL needs RSI below this (e.g. 60)
+                BigDecimal bandStdDev,            // reversion target/stop band, in σ (e.g. 1.0)
+                BigDecimal highProbStdDev,        // flag entries beyond ±this σ (e.g. 2.0)
+                int breakoutHoldCandles,          // consecutive closes past VWAP for a breakout (e.g. 2)
+                int strikeOffset
         ) {}
     }
 }

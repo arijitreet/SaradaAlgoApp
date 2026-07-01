@@ -1,5 +1,5 @@
-import { type ReactNode } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LineChart,
   LogOut,
+  Menu,
   Settings,
   Sparkles,
   Moon,
@@ -14,6 +15,7 @@ import {
   TrendingDown,
   Wifi,
   WifiOff,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmtNum, fmtSigned } from "@/lib/format";
@@ -45,14 +47,25 @@ const navItem = {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const logout = useAuthStore((s) => s.logout);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
+  // Close sidebar on route change
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="flex min-h-screen">
       <AmbientBackground />
-      {/* ── Sidebar ── */}
-      <aside className="fixed inset-y-0 left-0 z-30 flex w-[216px] flex-col border-r border-white/[0.06] bg-base-900/70 backdrop-blur-2xl">
-        <div className="flex items-center gap-2.5 px-5 py-6">
+
+      {/* ── Fixed left strip: logo + hamburger (always visible) ── */}
+      <div className="fixed inset-y-0 left-0 z-40 flex w-[60px] flex-col items-center border-r border-white/[0.06] bg-base-900/70 backdrop-blur-2xl">
+        {/* Logo */}
+        <div className="flex flex-col items-center pt-4 pb-2">
           <div className="relative h-9 w-9 shrink-0">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-accent to-profit opacity-50 blur-md animate-glow-pulse" />
             <motion.div
@@ -63,72 +76,111 @@ export function AppShell({ children }: { children: ReactNode }) {
               <img src="/logo.png" alt="Sarada Trading" className="h-full w-full object-cover" />
             </motion.div>
           </div>
-          <div>
-            <div className="text-sm font-bold tracking-tight text-white">SARADA</div>
-            <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
-              Algo Terminal
-            </div>
-          </div>
         </div>
 
-        <motion.nav
-          initial="hidden"
-          animate="show"
-          variants={navContainer}
-          className="mt-2 flex-1 space-y-1 px-3"
+        {/* Hamburger toggle */}
+        <button
+          onClick={() => setSidebarOpen((o) => !o)}
+          aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+          className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-slate-400 transition-colors hover:border-accent/30 hover:text-white"
         >
-          {NAV.map(({ to, label, icon: Icon }) => (
-            <motion.div key={to} variants={navItem} transition={{ type: "spring", stiffness: 320, damping: 26 }}>
-              <NavLink
-                to={to}
-                end={to === "/"}
-                className={({ isActive }) =>
-                  cn(
-                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:text-slate-100",
-                    isActive && "text-white"
-                  )
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    {isActive && (
-                      <motion.span
-                        layoutId="nav-active"
-                        className="absolute inset-0 rounded-xl border border-accent/25 bg-gradient-to-r from-accent/20 via-white/[0.06] to-transparent shadow-[0_0_24px_-8px_rgba(99,102,241,0.65)]"
-                        transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                      />
-                    )}
-                    <motion.span
-                      className="relative z-10 flex items-center"
-                      whileHover={{ scale: 1.12 }}
-                      transition={{ type: "spring", stiffness: 400, damping: 18 }}
-                    >
-                      <Icon size={17} />
-                    </motion.span>
-                    <span className="relative z-10">{label}</span>
-                  </>
-                )}
-              </NavLink>
-            </motion.div>
-          ))}
-        </motion.nav>
+          {sidebarOpen ? <X size={17} /> : <Menu size={17} />}
+        </button>
+      </div>
 
-        <div className="border-t border-white/[0.06] p-3">
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-slate-500"
-            onClick={() => {
-              logout();
-              navigate("/");
-            }}
+      {/* ── Overlay (click-outside to close) ── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={closeSidebar}
+            className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Slide-out nav panel (only tabs + sign out, no logo) ── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <motion.aside
+            initial={{ x: -260 }}
+            animate={{ x: 0 }}
+            exit={{ x: -260 }}
+            transition={{ type: "spring", stiffness: 400, damping: 36 }}
+            className="fixed inset-y-0 left-[60px] z-40 flex w-[196px] flex-col border-r border-white/[0.06] bg-base-900/70 backdrop-blur-2xl"
           >
-            <LogOut size={16} /> Sign out
-          </Button>
-        </div>
-      </aside>
+            {/* Title */}
+            <div className="px-4 py-5">
+              <div className="text-sm font-bold tracking-tight text-white">SARADA</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                Algo Terminal
+              </div>
+            </div>
+
+            {/* Nav items */}
+            <motion.nav
+              initial="hidden"
+              animate="show"
+              variants={navContainer}
+              className="flex-1 space-y-1 px-3"
+            >
+              {NAV.map(({ to, label, icon: Icon }) => (
+                <motion.div key={to} variants={navItem} transition={{ type: "spring", stiffness: 320, damping: 26 }}>
+                  <NavLink
+                    to={to}
+                    end={to === "/"}
+                    className={({ isActive }) =>
+                      cn(
+                        "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:text-slate-100",
+                        isActive && "text-white"
+                      )
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <motion.span
+                            layoutId="nav-active"
+                            className="absolute inset-0 rounded-xl border border-accent/25 bg-gradient-to-r from-accent/20 via-white/[0.06] to-transparent shadow-[0_0_24px_-8px_rgba(99,102,241,0.65)]"
+                            transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                          />
+                        )}
+                        <motion.span
+                          className="relative z-10 flex items-center"
+                          whileHover={{ scale: 1.12 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 18 }}
+                        >
+                          <Icon size={17} />
+                        </motion.span>
+                        <span className="relative z-10">{label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                </motion.div>
+              ))}
+            </motion.nav>
+
+            <div className="border-t border-white/[0.06] p-3">
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-slate-500"
+                onClick={() => {
+                  logout();
+                  navigate("/");
+                }}
+              >
+                <LogOut size={16} /> Sign out
+              </Button>
+            </div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
 
       {/* ── Main column ── */}
-      <div className="ml-[216px] flex min-h-screen flex-1 flex-col">
+      <div className="ml-[60px] flex min-h-screen flex-1 flex-col">
         <TopBar />
         <main className="mx-auto w-full max-w-[1500px] flex-1 px-6 py-6">{children}</main>
       </div>

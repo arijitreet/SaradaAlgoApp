@@ -67,4 +67,101 @@ class IndicatorsTest {
         assertThat(sr.resistance()).isEqualByComparingTo("140");
         assertThat(sr.support()).isEqualByComparingTo("100");
     }
+
+    // ── RSI ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void rsiIsNullUntilSeededThenBounded() {
+        Rsi rsi = new Rsi(14);
+        for (int i = 0; i < 14; i++) {
+            rsi.update(BigDecimal.valueOf(100 + i)); // 14 closes = 13 changes < period
+        }
+        assertThat(rsi.isReady()).isFalse();
+        rsi.update(BigDecimal.valueOf(114));         // 15th close = 14th change → seeded
+        assertThat(rsi.isReady()).isTrue();
+        assertThat(rsi.value().doubleValue()).isBetween(0.0, 100.0);
+    }
+
+    @Test
+    void rsiIs100WhenOnlyGains() {
+        Rsi rsi = new Rsi(14);
+        for (int i = 0; i < 20; i++) {
+            rsi.update(BigDecimal.valueOf(100 + i)); // strictly rising → no losses
+        }
+        assertThat(rsi.value()).isEqualByComparingTo("100"); // avgLoss == 0 → RSI 100
+    }
+
+    @Test
+    void rsiFallsTowardZeroOnDowntrend() {
+        Rsi rsi = new Rsi(14);
+        for (int i = 0; i < 20; i++) {
+            rsi.update(BigDecimal.valueOf(200 - i)); // strictly falling
+        }
+        assertThat(rsi.value().doubleValue()).isLessThan(5.0);
+    }
+
+    // ── Bollinger Bands ──────────────────────────────────────────────────────
+
+    @Test
+    void bollingerBandsCentreAndWidthOnConstantSeries() {
+        BollingerBands bb = new BollingerBands(5, BigDecimal.valueOf(2));
+        for (int i = 0; i < 4; i++) bb.update(BigDecimal.valueOf(100));
+        assertThat(bb.isReady()).isFalse();
+        bb.update(BigDecimal.valueOf(100));            // window full
+        assertThat(bb.isReady()).isTrue();
+        assertThat(bb.middle()).isEqualByComparingTo("100");
+        assertThat(bb.width()).isEqualByComparingTo("0"); // zero variance → zero width
+    }
+
+    @Test
+    void bollingerBandsWidenWithDispersion() {
+        BollingerBands bb = new BollingerBands(4, BigDecimal.valueOf(2));
+        bb.update(BigDecimal.valueOf(90));
+        bb.update(BigDecimal.valueOf(110));
+        bb.update(BigDecimal.valueOf(90));
+        bb.update(BigDecimal.valueOf(110));            // mean 100, sd 10
+        assertThat(bb.middle()).isEqualByComparingTo("100");
+        assertThat(bb.upper().doubleValue()).isCloseTo(120.0, within(0.01)); // 100 + 2*10
+        assertThat(bb.lower().doubleValue()).isCloseTo(80.0, within(0.01));  // 100 - 2*10
+    }
+
+    // ── ADX ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void adxIsHighOnAStrongUptrend() {
+        Adx adx = new Adx(14);
+        // ~40 strictly-rising candles → persistent +DM, no −DM → ADX climbs high.
+        double base = 100;
+        for (int i = 0; i < 40; i++) {
+            double low = base + i * 2;
+            adx.update(candle(low, low + 2, low, low + 1.5, 0));
+        }
+        assertThat(adx.isReady()).isTrue();
+        assertThat(adx.value().doubleValue()).isGreaterThan(40.0); // trending
+    }
+
+    @Test
+    void adxIsLowInAChoppyRange() {
+        Adx adx = new Adx(14);
+        // Oscillating high/low with no directional drift → low ADX (ranging).
+        for (int i = 0; i < 60; i++) {
+            double mid = (i % 2 == 0) ? 100 : 101;
+            adx.update(candle(mid, mid + 1, mid - 1, mid, 0));
+        }
+        assertThat(adx.isReady()).isTrue();
+        assertThat(adx.value().doubleValue()).isLessThan(25.0); // ranging (Mean-Reversion gate)
+    }
+
+    // ── VWAP standard-deviation bands ────────────────────────────────────────
+
+    @Test
+    void vwapBandsBracketVwap() {
+        Vwap vwap = new Vwap();
+        vwap.update(candle(90, 90, 90, 90, 0));   // typical 90
+        vwap.update(candle(110, 110, 110, 110, 0)); // typical 110 → VWAP 100, σ 10
+        assertThat(vwap.value().doubleValue()).isCloseTo(100.0, within(0.01));
+        assertThat(vwap.stdDev().doubleValue()).isCloseTo(10.0, within(0.01));
+        assertThat(vwap.upperBand(BigDecimal.ONE).doubleValue()).isCloseTo(110.0, within(0.01));
+        assertThat(vwap.lowerBand(BigDecimal.ONE).doubleValue()).isCloseTo(90.0, within(0.01));
+    }
 }
