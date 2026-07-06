@@ -103,14 +103,6 @@ app:
       adx-threshold: 25              # only trade ranging markets (ADX < 25)
       sl-bb-width-mult: 1.5          # index SL = entry ∓ 1.5 × BB width; target = mid BB
       strike-offset: 0
-    vwap-strategy:
-      rsi-period: 14
-      reversion-rsi-buy-min: 40      # reversion BUY (VWAP reclaim) needs RSI > 40
-      reversion-rsi-sell-max: 60     # reversion SELL (VWAP loss) needs RSI < 60
-      band-std-dev: 1.0              # reversion target/stop at ±1 σ band
-      high-prob-std-dev: 2.0         # flag entries beyond ±2 σ as high-probability
-      breakout-hold-candles: 2       # closes past VWAP needed to confirm a breakout
-      strike-offset: 0
 
 logging:
   level:

@@ -67,8 +67,7 @@ public record AppProperties(
             FirstCandleBreakout firstCandleBreakout,
             SupertrendFlip supertrendFlip,
             MultiConfluenceTrend multiConfluenceTrend,
-            MeanReversion meanReversion,
-            VwapStrategy vwapStrategy
+            MeanReversion meanReversion
     ) {
         public record FirstCandleBreakout(
                 int emaFast,
@@ -113,16 +112,6 @@ public record AppProperties(
                 int adxPeriod,
                 BigDecimal adxThreshold,    // only trade when ADX below this (ranging market)
                 BigDecimal slBbWidthMult,   // index SL distance = mult × BB width at entry
-                int strikeOffset
-        ) {}
-
-        public record VwapStrategy(
-                int rsiPeriod,
-                BigDecimal reversionRsiBuyMin,    // reversion BUY needs RSI above this (e.g. 40)
-                BigDecimal reversionRsiSellMax,   // reversion SELL needs RSI below this (e.g. 60)
-                BigDecimal bandStdDev,            // reversion target/stop band, in σ (e.g. 1.0)
-                BigDecimal highProbStdDev,        // flag entries beyond ±this σ (e.g. 2.0)
-                int breakoutHoldCandles,          // consecutive closes past VWAP for a breakout (e.g. 2)
                 int strikeOffset
         ) {}
     }

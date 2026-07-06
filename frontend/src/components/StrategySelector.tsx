@@ -7,7 +7,6 @@ const STRATEGY_LABELS: Record<string, string> = {
   "supertrend-flip-v1": "Supertrend Flip",
   "multi-confluence-trend-v1": "Multi-Confluence Trend",
   "mean-reversion-v1": "Mean Reversion",
-  "vwap-strategy-v1": "VWAP Strategy",
 };
 
 /**

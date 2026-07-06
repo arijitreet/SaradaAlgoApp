@@ -12,7 +12,7 @@ import java.time.LocalTime;
  *
  *  • Global:  no signals before 09:30 (the 09:15–09:30 open is skipped for every strategy).
  *  • Mean Reversion:            11:30–13:30 (midday range).
- *  • Multi-Confluence & VWAP:   09:30–11:30 and 13:30–15:00 (trend/momentum windows).
+ *  • Multi-Confluence Trend:    09:30–11:30 and 13:30–15:00 (trend/momentum windows).
  *  • First-Candle Breakout & Supertrend:  global skip only; otherwise the full session.
  */
 @Component
@@ -40,7 +40,7 @@ public class StrategyTimeWindows {
         }
         return switch (strategyId) {
             case MeanReversionStrategy.ID -> within(now, MIDDAY_START, MIDDAY_END);
-            case MultiConfluenceTrendStrategy.ID, VwapStrategy.ID ->
+            case MultiConfluenceTrendStrategy.ID ->
                     within(now, MORNING_START, MORNING_END) || within(now, AFTERNOON_START, AFTERNOON_END);
             default -> true;   // FCB, Supertrend — full session after the open skip
         };
@@ -50,7 +50,7 @@ public class StrategyTimeWindows {
     public String windowLabel(String strategyId) {
         return switch (strategyId) {
             case MeanReversionStrategy.ID -> "11:30–13:30";
-            case MultiConfluenceTrendStrategy.ID, VwapStrategy.ID -> "09:30–11:30, 13:30–15:00";
+            case MultiConfluenceTrendStrategy.ID -> "09:30–11:30, 13:30–15:00";
             default -> "09:30–close";
         };
     }

@@ -62,9 +62,6 @@ function cellsFor(
   if (id === "mean-reversion-v1") {
     return { cells: meanReversionCells(ind), subtitle: "5-minute · BB + RSI + ADX" };
   }
-  if (id === "vwap-strategy-v1") {
-    return { cells: vwapCells(ind, market), subtitle: "5-minute · VWAP ± σ" };
-  }
   return { cells: fcbCells(ind, market), subtitle: "5-minute · live" };
 }
 
@@ -169,21 +166,5 @@ function meanReversionCells(ind: IndicatorSnapshot | undefined): Cell[] {
       sub: adx == null ? undefined : adx < 25 ? "ranging ✓" : "trending ✗",
       tone: adxTone,
     },
-  ];
-}
-
-function vwapCells(ind: IndicatorSnapshot | undefined, market: MarketUpdate | null): Cell[] {
-  const vsVwap =
-    ind?.vwap != null && market != null ? (market.ltp > ind.vwap ? "above" : "below") : null;
-  return [
-    {
-      label: "VWAP",
-      value: fmtNum(ind?.vwap),
-      sub: vsVwap ? `price ${vsVwap}` : undefined,
-      tone: vsVwap === "above" ? "profit" : vsVwap === "below" ? "loss" : undefined,
-    },
-    { label: "VWAP +1σ", value: fmtNum(ind?.bbUpper), sub: "upper band", tone: "loss" },
-    { label: "VWAP −1σ", value: fmtNum(ind?.bbLower), sub: "lower band", tone: "profit" },
-    { label: "RSI 14", value: fmtNum(ind?.rsi), sub: "reversion gate" },
   ];
 }

@@ -8,6 +8,7 @@ import com.sarada.trading.common.time.TradingClock;
 import com.sarada.trading.common.ws.WsPublisher;
 import com.sarada.trading.orders.application.OrderService;
 import com.sarada.trading.orders.domain.OrderEntity;
+import com.sarada.trading.positions.domain.BrokerPositionsPort;
 import com.sarada.trading.positions.domain.PositionEntity;
 import com.sarada.trading.positions.infra.PositionRepository;
 import com.sarada.trading.risk.domain.TradeStatsPort;
@@ -38,6 +39,7 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
 
     private final PositionRepository positions;
     private final OrderService orderService;
+    private final BrokerPositionsPort brokerPositions;
     private final TrailingStopPolicy stopPolicy;
     private final LivePriceCache priceCache;
     private final TradingClock clock;
@@ -90,6 +92,13 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
             throw DomainException.conflict("Exit already in progress");
         }
         try {
+            // Guard: if the broker already shows zero net qty, the position was manually
+            // closed on Kite outside Sarada. Close the DB record without placing a SELL
+            // order — placing one would create a naked short on an already-flat position.
+            if (brokerShowsPositionGone(position)) {
+                return doCloseExternal(position);
+            }
+
             OrderEntity exitOrder = orderService.placeMarket(
                     position.getInstrumentToken(), position.getTradingsymbol(),
                     "NFO", OrderEntity.Side.SELL, position.getQuantity());
@@ -127,6 +136,59 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
                 log.error("Force exit failed for position {}: {}", open.getId(), e.getMessage());
             }
         }
+    }
+
+    // ── external close (reconciliation path, no order placed) ───────────────
+
+    /**
+     * Closes a DB-open position without placing a broker order. Called by
+     * {@link com.sarada.trading.positions.application.PositionRecoveryService} when
+     * periodic reconciliation confirms the broker already shows zero net qty —
+     * i.e. the user manually exited the position on Kite outside Sarada.
+     * Exit price is the option's last known LTP (approximate; real exit price is
+     * whatever the user received on Kite).
+     */
+    public PositionEntity closeExternal(long positionId) {
+        PositionEntity position = positions.findById(positionId)
+                .orElseThrow(() -> DomainException.notFound("Position " + positionId + " not found"));
+        if (position.getStatus() != PositionEntity.Status.OPEN) {
+            throw DomainException.conflict("Position already closed");
+        }
+        if (!exiting.add(positionId)) {
+            throw DomainException.conflict("Exit already in progress");
+        }
+        try {
+            return doCloseExternal(position);
+        } finally {
+            exiting.remove(positionId);
+        }
+    }
+
+    /** Performs the actual close-without-order. Caller must hold the {@link #exiting} lock. */
+    private PositionEntity doCloseExternal(PositionEntity position) {
+        BigDecimal ltp = priceCache.ltp(position.getInstrumentToken()).orElse(position.getEntryPrice());
+        position.close(null, ltp, "MANUAL_EXTERNAL");
+        position = positions.save(position);
+        log.warn("[EXIT] {} closed as MANUAL_EXTERNAL — broker net qty 0, no order placed. "
+                        + "P&L≈{} (LTP at detection; real exit price is whatever user received on Kite)",
+                position.getTradingsymbol(), position.getRealizedPnl());
+        audit.log("POSITION", "MANUAL_EXTERNAL", position.getTradingsymbol()
+                + " — broker shows net qty 0; likely manually exited on Kite. "
+                + "P&L approximate (LTP at detection).");
+        ws.feed("RISK", "Manual exit detected on Kite",
+                position.getTradingsymbol() + " was closed outside Sarada — marked closed, no order placed");
+        events.publishEvent(new DomainEvents.PositionClosed(
+                position.getId(), position.getRealizedPnl(), "MANUAL_EXTERNAL"));
+        publishPosition(position, position.getExitPrice());
+        publishPnl();
+        return position;
+    }
+
+    /** Returns true when the broker confirms zero net qty for this position's symbol. */
+    private boolean brokerShowsPositionGone(PositionEntity position) {
+        return brokerPositions.openNetQuantities()
+                .map(book -> book.getOrDefault(position.getTradingsymbol(), 0) <= 0)
+                .orElse(false); // broker unreachable → assume position exists, proceed with order
     }
 
     // ── TradeStatsPort (risk) ───────────────────────────────────────────────

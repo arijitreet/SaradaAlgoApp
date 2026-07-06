@@ -4,7 +4,7 @@ import { Crosshair, Check, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtNum, fmtInrPrecise, fmtTime, pnlColor } from "@/lib/format";
 import { useLiveStore } from "@/stores/liveStore";
-import { useExitPosition } from "@/hooks/queries";
+import { useActivePositions, useExitPosition } from "@/hooks/queries";
 import { GlassCard, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,11 @@ const STAGE_STEPS = [
 const signedInr = (v: number) => `${v >= 0 ? "+" : ""}${fmtInrPrecise(v)}`;
 
 export function ActiveTradePanel() {
-  const position = useLiveStore((s) => s.position);
+  const livePosition = useLiveStore((s) => s.position);
+  // Seed from the DB-backed endpoint so an open position survives page loads /
+  // app restarts; live WS updates take over as soon as ticks flow.
+  const { data: activePositions } = useActivePositions();
+  const position = livePosition ?? activePositions?.[0] ?? null;
   const exit = useExitPosition();
 
   const edge = position

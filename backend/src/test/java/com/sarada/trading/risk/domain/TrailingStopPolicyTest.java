@@ -37,9 +37,7 @@ class TrailingStopPolicyTest {
                         new AppProperties.Strategy.MultiConfluenceTrend(9, 21, 10, new BigDecimal("3.0"), 9, 21, 0),
                         new AppProperties.Strategy.MeanReversion(20, new BigDecimal("2.0"), 14,
                                 new BigDecimal("30"), new BigDecimal("70"), 14, new BigDecimal("25"),
-                                new BigDecimal("1.5"), 0),
-                        new AppProperties.Strategy.VwapStrategy(14, new BigDecimal("40"), new BigDecimal("60"),
-                                new BigDecimal("1.0"), new BigDecimal("2.0"), 2, 0)));
+                                new BigDecimal("1.5"), 0)));
         policy = new TrailingStopPolicy(props);
     }
 
