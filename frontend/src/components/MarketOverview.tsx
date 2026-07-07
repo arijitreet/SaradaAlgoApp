@@ -35,7 +35,7 @@ export function MarketOverview() {
   }, [candles, market]);
 
   return (
-    <GlassCard className="col-span-full xl:col-span-2">
+    <GlassCard className="col-span-full flex flex-col xl:col-span-2">
       <CardHeader
         title="Market Overview"
         subtitle="NIFTY 50 · 5-minute closes"
@@ -47,7 +47,9 @@ export function MarketOverview() {
           )
         }
       />
-      <div className="h-[260px]">
+      {/* flex-1 so the chart grows/shrinks with the resizable dashboard panel;
+          min-h keeps it readable at the panel's minimum size. */}
+      <div className="min-h-[200px] flex-1">
         {data.length === 0 ? (
           <div className="relative flex h-full items-center justify-center overflow-hidden text-sm text-slate-600">
             <motion.div
