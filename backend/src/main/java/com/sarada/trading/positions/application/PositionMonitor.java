@@ -40,9 +40,14 @@ public class PositionMonitor {
     @EventListener
     public void onTick(DomainEvents.TickReceived event) {
         Tick tick = event.tick();
-        positions.findFirstByStatusOrderByOpenedAtDesc(PositionEntity.Status.OPEN)
-                .filter(p -> p.getInstrumentToken() == tick.instrumentToken())
-                .ifPresent(position -> manage(position, tick.lastPrice()));
+        // Up to maxConcurrentTrades positions can be OPEN at once — each is managed
+        // independently (its own entry/SL/target), so every match for this tick's
+        // instrument must be processed, not just the most recently opened one.
+        for (PositionEntity position : positions.findByStatus(PositionEntity.Status.OPEN)) {
+            if (position.getInstrumentToken() == tick.instrumentToken()) {
+                manage(position, tick.lastPrice());
+            }
+        }
     }
 
     private void manage(PositionEntity position, BigDecimal price) {

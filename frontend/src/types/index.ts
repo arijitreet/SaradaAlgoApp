@@ -125,12 +125,12 @@ export interface StrategyPerformanceView {
   totalPnl: number;
   trades: number;
   maxTrades: number;
-  openPosition: {
+  openPositions: {
     tradingsymbol: string;
     optionType: "CE" | "PE";
     strike: number;
     unrealizedPnl: number;
-  } | null;
+  }[];
   lastSignal: {
     type: string;
     triggerPrice: number;

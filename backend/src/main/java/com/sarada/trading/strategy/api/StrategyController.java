@@ -87,7 +87,7 @@ public class StrategyController {
             String strategyId, boolean active,
             BigDecimal realizedPnl, BigDecimal unrealizedPnl, BigDecimal totalPnl,
             int trades, int maxTrades,
-            StrategyPerformancePort.OpenPositionBrief openPosition,
+            List<StrategyPerformancePort.OpenPositionBrief> openPositions,
             LastSignalView lastSignal,
             String activeWindow, boolean windowActive) {}
 
@@ -107,7 +107,7 @@ public class StrategyController {
                     return new StrategyPerformanceView(
                             s.id(), active,
                             pnl.realized(), pnl.unrealized(), pnl.realized().add(pnl.unrealized()),
-                            pnl.trades(), maxTrades, pnl.openPosition(), last,
+                            pnl.trades(), maxTrades, pnl.openPositions(), last,
                             timeWindows.windowLabel(s.id()), timeWindows.isActive(s.id()));
                 })
                 .toList();

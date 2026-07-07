@@ -16,7 +16,7 @@ const signedInr = (v: number) => `${v >= 0 ? "+" : ""}${fmtInrPrecise(v)}`;
 /** Hero card: live day P&L with realized / unrealized split and trade budget. */
 export function PnlHeroCard() {
   const pnl = useLiveStore((s) => s.pnl);
-  const position = useLiveStore((s) => s.position);
+  const hasPosition = useLiveStore((s) => Object.keys(s.positions).length > 0);
   const calm = useUiStore((s) => s.calmMode);
   const { data: settings } = useSettings();
   // Global daily cap (shared across all strategies); resets at 09:15 each day.
@@ -83,14 +83,14 @@ export function PnlHeroCard() {
 
         <AnimatePresence mode="wait">
           <motion.div
-            key={position ? "in" : "flat"}
+            key={hasPosition ? "in" : "flat"}
             initial={{ opacity: 0, scale: 0.8, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 6 }}
             transition={{ type: "spring", stiffness: 400, damping: 22 }}
           >
-            <Badge variant={position ? "accent" : "neutral"} pulse={!!position}>
-              <Zap size={11} /> {position ? "IN POSITION" : "FLAT"}
+            <Badge variant={hasPosition ? "accent" : "neutral"} pulse={hasPosition}>
+              <Zap size={11} /> {hasPosition ? "IN POSITION" : "FLAT"}
             </Badge>
           </motion.div>
         </AnimatePresence>

@@ -86,10 +86,13 @@ function StrategyCard({ s }: { s: StrategyPerformanceView }) {
           </span>
         </Row>
         <Row label="Position">
-          {s.openPosition ? (
-            <span className={s.openPosition.optionType === "CE" ? "text-profit" : "text-loss"}>
-              {fmtNum(s.openPosition.strike)} {s.openPosition.optionType} ·{" "}
-              {signedInr(s.openPosition.unrealizedPnl)}
+          {s.openPositions.length > 0 ? (
+            <span className="flex flex-col items-end gap-0.5">
+              {s.openPositions.map((p, i) => (
+                <span key={i} className={p.optionType === "CE" ? "text-profit" : "text-loss"}>
+                  {fmtNum(p.strike)} {p.optionType} · {signedInr(p.unrealizedPnl)}
+                </span>
+              ))}
             </span>
           ) : (
             <span className="text-slate-600">Flat</span>

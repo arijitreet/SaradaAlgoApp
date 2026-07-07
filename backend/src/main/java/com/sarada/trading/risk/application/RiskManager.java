@@ -39,11 +39,27 @@ public class RiskManager {
             return rejected(signal, "Daily trade limit reached (" + tradesToday + "/"
                     + props.trading().maxTradesPerDay() + " across all strategies)");
         }
-        if (tradeStats.hasOpenPosition()) {
-            return rejected(signal, "A position is already open");
+        int maxConcurrent = props.trading().maxConcurrentTrades();
+        TradeStatsPort.SlotReservation reservation =
+                tradeStats.tryReserveSlot(signal.strategyId(), maxConcurrent);
+        if (!reservation.approved()) {
+            if (reservation.blockedBySameStrategy()) {
+                String tradeRef = reservation.activeTradeId() != null
+                        ? "tradeId=" + reservation.activeTradeId() : "entry in flight";
+                return rejected(signal, "ENTRY BLOCKED: strategy=" + signal.strategyId()
+                        + " already has an active trade (" + tradeRef + ")");
+            }
+            return rejected(signal, "Maximum concurrent trades reached ("
+                    + maxConcurrent + "/" + maxConcurrent + ")");
         }
         audit.log("RISK", "ENTRY_APPROVED", signal.type() + " @ " + signal.triggerPrice());
         return Decision.approve();
+    }
+
+    /** Releases a slot reserved by {@link #evaluateEntry} when the entry pipeline aborts
+     *  before a position is actually opened (e.g. order rejected, pipeline exception). */
+    public void releaseReservedSlot(String strategyId) {
+        tradeStats.releaseSlot(strategyId);
     }
 
     private Decision rejected(TradeSignal signal, String reason) {

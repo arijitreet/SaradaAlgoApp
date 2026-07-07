@@ -5,6 +5,7 @@ import com.sarada.trading.common.config.AppProperties;
 import com.sarada.trading.common.events.DomainEvents;
 import com.sarada.trading.common.market.LivePriceCache;
 import com.sarada.trading.common.market.TradeSignal;
+import com.sarada.trading.common.time.TradingClock;
 import com.sarada.trading.marketdata.application.OptionSelector;
 import com.sarada.trading.marketdata.domain.InstrumentEntity;
 import com.sarada.trading.orders.domain.OrderEntity;
@@ -16,6 +17,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+
+import java.util.Optional;
 
 /**
  * The entry pipeline, end to end:
@@ -40,20 +43,32 @@ public class TradeEntryOrchestrator {
     private final OrderService orderService;
     private final SignalRepository signals;
     private final AppProperties props;
+    private final TradingClock clock;
     private final ApplicationEventPublisher events;
 
     @Async("appExecutor")
     @EventListener
     public void onSignal(DomainEvents.SignalGenerated event) {
         TradeSignal signal = event.signal();
+        RiskManager.Decision decision = riskManager.evaluateEntry(signal);
+        if (!decision.approved()) {
+            recordOutcome(event.signalId(), false, decision.reason());
+            return;
+        }
+
+        // From here the concurrent-trade slot is reserved (RiskManager.evaluateEntry) —
+        // release it on any path that does NOT end in a published EntryFilled event.
+        boolean filled = false;
         try {
-            RiskManager.Decision decision = riskManager.evaluateEntry(signal);
-            if (!decision.approved()) {
-                recordOutcome(event.signalId(), false, decision.reason());
+            Optional<InstrumentEntity> resolved = optionSelector.selectAvoidingConflicts(
+                    signal.type(), signal.triggerPrice(), signal.strikeOffset(),
+                    clock.tradingDay(), signal.strategyId());
+            if (resolved.isEmpty()) {
+                recordOutcome(event.signalId(), false,
+                        "Strike shift exhausted — every deeper-ITM contract already active/taken today");
                 return;
             }
-
-            InstrumentEntity contract = optionSelector.select(signal.type(), signal.triggerPrice(), signal.strikeOffset());
+            InstrumentEntity contract = resolved.get();
             feedSubscriptions.subscribe(contract.getInstrumentToken());
             awaitFirstPrice(contract.getInstrumentToken());
 
@@ -74,9 +89,14 @@ public class TradeEntryOrchestrator {
             events.publishEvent(new DomainEvents.EntryFilled(
                     order.getId(), signal, contract.getInstrumentToken(), contract.getTradingsymbol(),
                     contract.getStrike(), contract.getExpiry(), quantity, order.getAvgFillPrice()));
+            filled = true;
         } catch (Exception e) {
             log.error("Entry pipeline failed for signal {}: {}", event.signalId(), e.getMessage(), e);
             recordOutcome(event.signalId(), false, "Pipeline error: " + e.getMessage());
+        } finally {
+            if (!filled) {
+                riskManager.releaseReservedSlot(signal.strategyId());
+            }
         }
     }
 

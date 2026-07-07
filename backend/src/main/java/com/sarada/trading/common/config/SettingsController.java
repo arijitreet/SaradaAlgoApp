@@ -33,7 +33,8 @@ public class SettingsController {
                         "sessionStart", props.trading().sessionStart().toString(),
                         "sessionEnd", props.trading().sessionEnd().toString(),
                         "candleMinutes", props.trading().candleMinutes(),
-                        "maxTradesPerDay", props.trading().maxTradesPerDay()),
+                        "maxTradesPerDay", props.trading().maxTradesPerDay(),
+                        "maxConcurrentTrades", props.trading().maxConcurrentTrades()),
                 "risk", Map.of(
                         "stopLossPoints", props.risk().stopLossPoints(),
                         "target1Points", props.risk().target1Points(),

@@ -16,6 +16,7 @@ class TrailingStopPolicyTest {
 
     private static final String FCB = "first-candle-breakout-v1";
     private static final String ST  = "supertrend-flip-v1";
+    private static final String MCT = "multi-confluence-trend-v1";
 
     @BeforeEach
     void setUp() {
@@ -27,14 +28,16 @@ class TrailingStopPolicyTest {
                         new BigDecimal("30"),
                         new BigDecimal("25")),
                 new AppProperties.Strategy(
-                        new AppProperties.Strategy.FirstCandleBreakout(9, 15, 14, new BigDecimal("8"), 20),
+                        new AppProperties.Strategy.FirstCandleBreakout(9, 15, 14, new BigDecimal("8"), 20,
+                                new BigDecimal("15")),
                         new AppProperties.Strategy.SupertrendFlip(10, new BigDecimal("3.0"), 0,
                                 new BigDecimal("15"),
                                 new BigDecimal("15"),
                                 new BigDecimal("30"),
                                 new BigDecimal("15"),
                                 new BigDecimal("15")),
-                        new AppProperties.Strategy.MultiConfluenceTrend(9, 21, 10, new BigDecimal("3.0"), 9, 21, 0),
+                        new AppProperties.Strategy.MultiConfluenceTrend(9, 21, 10, new BigDecimal("3.0"), 9, 21, 0,
+                                new BigDecimal("25")),
                         new AppProperties.Strategy.MeanReversion(20, new BigDecimal("2.0"), 14,
                                 new BigDecimal("30"), new BigDecimal("70"), 14, new BigDecimal("25"),
                                 new BigDecimal("1.5"), 0)));
@@ -45,8 +48,8 @@ class TrailingStopPolicyTest {
     class FcbStrategy {
 
         @Test
-        void initialStopIsEntryMinus25() {
-            assertThat(policy.initial(entry, FCB).stopLoss()).isEqualByComparingTo("75");
+        void initialStopIsEntryMinus15() {
+            assertThat(policy.initial(entry, FCB).stopLoss()).isEqualByComparingTo("85");
             assertThat(policy.target1(entry, FCB)).isEqualByComparingTo("125");
             assertThat(policy.target2(entry, FCB)).isEqualByComparingTo("150");
         }
@@ -126,6 +129,35 @@ class TrailingStopPolicyTest {
             var at60 = policy.advance(entry, new BigDecimal("160"),
                     at45.stopLoss(), at45.stage(), ST);
             assertThat(at60.stopLoss()).isEqualByComparingTo("145");
+        }
+    }
+
+    @Nested
+    class MultiConfluenceTrendStrategy {
+
+        @Test
+        void initialStopIsEntryMinus25() {
+            // MCT has its own config-sourced stopLossPoints (default 25) — same numeric
+            // value as the shared default, but no longer implicitly inherited from it.
+            assertThat(policy.initial(entry, MCT).stopLoss()).isEqualByComparingTo("75");
+            assertThat(policy.target1(entry, MCT)).isEqualByComparingTo("125");
+            assertThat(policy.target2(entry, MCT)).isEqualByComparingTo("150");
+        }
+
+        @Test
+        void target1MovesStopToBreakeven() {
+            var state = policy.advance(entry, new BigDecimal("125"),
+                    new BigDecimal("75"), TrailingStopPolicy.Stage.INITIAL, MCT);
+            assertThat(state.stopLoss()).isEqualByComparingTo("100");
+            assertThat(state.stage()).isEqualTo(TrailingStopPolicy.Stage.BREAKEVEN);
+        }
+
+        @Test
+        void target2LocksEntryPlus30() {
+            var state = policy.advance(entry, new BigDecimal("150"),
+                    new BigDecimal("100"), TrailingStopPolicy.Stage.BREAKEVEN, MCT);
+            assertThat(state.stopLoss()).isEqualByComparingTo("130");
+            assertThat(state.stage()).isEqualTo(TrailingStopPolicy.Stage.LOCKED);
         }
     }
 

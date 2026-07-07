@@ -6,6 +6,7 @@ import com.sarada.trading.common.events.DomainEvents;
 import com.sarada.trading.common.market.LivePriceCache;
 import com.sarada.trading.common.time.TradingClock;
 import com.sarada.trading.common.ws.WsPublisher;
+import com.sarada.trading.marketdata.domain.ActiveTradesPort;
 import com.sarada.trading.orders.application.OrderService;
 import com.sarada.trading.orders.domain.OrderEntity;
 import com.sarada.trading.positions.domain.BrokerPositionsPort;
@@ -14,6 +15,7 @@ import com.sarada.trading.positions.infra.PositionRepository;
 import com.sarada.trading.risk.domain.TradeStatsPort;
 import com.sarada.trading.risk.domain.TrailingStopPolicy;
 import com.sarada.trading.strategy.domain.StrategyPerformancePort;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,18 +26,23 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Owns the position lifecycle: opens on EntryFilled, exits on stop/manual/
- * force-exit, and feeds the live P&L stream. Also implements the risk
- * module's TradeStatsPort (trade counting / open-position checks).
+ * force-exit, and feeds the live P&L stream. Also implements the risk module's
+ * TradeStatsPort (trade counting / concurrent-slot gate) and the marketdata
+ * module's ActiveTradesPort (contract-conflict checks for strike selection).
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PositionService implements TradeStatsPort, StrategyPerformancePort {
+public class PositionService implements TradeStatsPort, StrategyPerformancePort, ActiveTradesPort {
 
     private final PositionRepository positions;
     private final OrderService orderService;
@@ -49,6 +56,33 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
 
     /** Positions with an exit in flight — prevents double-selling on tick races. */
     private final Set<Long> exiting = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Count of active concurrent-trade slots: OPEN positions plus any reserved via
+     * {@link #tryReserveSlot} for an entry pipeline still in flight (order not yet filled).
+     * Guarded by the monitor lock on {@code this} so a reserve-check-and-increment can never
+     * race with another reserve or a release.
+     */
+    private int activeSlots;
+
+    /**
+     * strategyId -> the position id it currently holds a slot for (OPEN, or reserved but still
+     * in-flight — {@code -1} as a placeholder until {@link #onEntryFilled} learns the real id).
+     * A strategy present here is barred from taking a second slot until its trade closes.
+     */
+    private final Map<String, Long> activeByStrategy = new HashMap<>();
+
+    private static final long PENDING_TRADE_ID = -1L;
+
+    @PostConstruct
+    void initActiveSlots() {
+        List<PositionEntity> open = positions.findByStatus(PositionEntity.Status.OPEN);
+        activeSlots = open.size();
+        activeByStrategy.clear();
+        for (PositionEntity p : open) {
+            activeByStrategy.put(p.getStrategyId(), p.getId());
+        }
+    }
 
     // ── opening ─────────────────────────────────────────────────────────────
 
@@ -69,6 +103,7 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
                 event.signal().indexStopLoss(),
                 event.signal().indexTarget());
         position = positions.save(position);
+        bindActiveSlot(sid, position.getId());
 
         log.info("Position OPEN {} x{} @ {} (SL {})", position.getTradingsymbol(),
                 position.getQuantity(), position.getEntryPrice(), position.getStopLoss());
@@ -109,6 +144,7 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
 
             position.close(exitOrder.getId(), exitOrder.getAvgFillPrice(), reason);
             position = positions.save(position);
+            releaseSlot(position.getStrategyId());
 
             log.info("Position CLOSED {} @ {} ({}) pnl={}", position.getTradingsymbol(),
                     position.getExitPrice(), reason, position.getRealizedPnl());
@@ -169,6 +205,7 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
         BigDecimal ltp = priceCache.ltp(position.getInstrumentToken()).orElse(position.getEntryPrice());
         position.close(null, ltp, "MANUAL_EXTERNAL");
         position = positions.save(position);
+        releaseSlot(position.getStrategyId());
         log.warn("[EXIT] {} closed as MANUAL_EXTERNAL — broker net qty 0, no order placed. "
                         + "P&L≈{} (LTP at detection; real exit price is whatever user received on Kite)",
                 position.getTradingsymbol(), position.getRealizedPnl());
@@ -199,8 +236,37 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
     }
 
     @Override
-    public boolean hasOpenPosition() {
-        return positions.findFirstByStatusOrderByOpenedAtDesc(PositionEntity.Status.OPEN).isPresent();
+    public synchronized TradeStatsPort.SlotReservation tryReserveSlot(String strategyId, int maxConcurrentTrades) {
+        Long existing = activeByStrategy.get(strategyId);
+        if (existing != null) {
+            Long activeTradeId = existing.equals(PENDING_TRADE_ID) ? null : existing;
+            return TradeStatsPort.SlotReservation.blockedBySameStrategy(activeTradeId);
+        }
+        if (activeSlots >= maxConcurrentTrades) {
+            return TradeStatsPort.SlotReservation.blockedByCap();
+        }
+        activeSlots++;
+        activeByStrategy.put(strategyId, PENDING_TRADE_ID);
+        return TradeStatsPort.SlotReservation.granted();
+    }
+
+    /** Binds the real position id to a strategy's reserved slot once the entry fills. */
+    private synchronized void bindActiveSlot(String strategyId, long positionId) {
+        activeByStrategy.put(strategyId, positionId);
+    }
+
+    @Override
+    public synchronized void releaseSlot(String strategyId) {
+        if (activeByStrategy.remove(strategyId) != null && activeSlots > 0) {
+            activeSlots--;
+        }
+    }
+
+    // ── ActiveTradesPort (strike-selection conflict avoidance) ──────────────
+
+    @Override
+    public boolean isContractInUseToday(String tradingsymbol, LocalDate tradingDay) {
+        return positions.existsActiveOrTakenOn(tradingsymbol, tradingDay);
     }
 
     // ── StrategyPerformancePort (strategy comparison view) ──────────────────
@@ -210,18 +276,18 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort 
         BigDecimal realized = positions.realizedPnlByStrategyOn(day, strategyId);
         int trades = positions.countByTradingDayAndStrategyId(day, strategyId);
 
-        OpenPositionBrief openBrief = null;
+        // A strategy may hold up to maxConcurrentTrades open positions at once (e.g. both
+        // slots from the same strategy) — sum unrealized across all of them.
+        List<PositionEntity> open = positions.findByStrategyIdAndStatus(strategyId, PositionEntity.Status.OPEN);
         BigDecimal unrealized = BigDecimal.ZERO;
-        PositionEntity open = positions
-                .findFirstByStrategyIdAndStatusOrderByOpenedAtDesc(strategyId, PositionEntity.Status.OPEN)
-                .orElse(null);
-        if (open != null) {
-            BigDecimal ltp = priceCache.ltp(open.getInstrumentToken()).orElse(open.getEntryPrice());
-            unrealized = open.unrealizedPnl(ltp);
-            openBrief = new OpenPositionBrief(open.getTradingsymbol(), open.getOptionType(),
-                    open.getStrike(), unrealized);
+        List<OpenPositionBrief> openBriefs = new ArrayList<>();
+        for (PositionEntity p : open) {
+            BigDecimal ltp = priceCache.ltp(p.getInstrumentToken()).orElse(p.getEntryPrice());
+            BigDecimal pnl = p.unrealizedPnl(ltp);
+            unrealized = unrealized.add(pnl);
+            openBriefs.add(new OpenPositionBrief(p.getTradingsymbol(), p.getOptionType(), p.getStrike(), pnl));
         }
-        return new StrategyPnl(realized, unrealized, trades, openBrief);
+        return new StrategyPnl(realized, unrealized, trades, openBriefs);
     }
 
     // ── live streams ────────────────────────────────────────────────────────

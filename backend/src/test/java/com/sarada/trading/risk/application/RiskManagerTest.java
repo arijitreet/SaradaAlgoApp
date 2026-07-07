@@ -34,7 +34,7 @@ class RiskManagerTest {
                 new AppProperties.Trading(
                         "NIFTY 50", "NSE", "NFO", 65, 1, 50,
                         LocalTime.of(9, 20), LocalTime.of(15, 5), LocalTime.of(9, 15),
-                        5, 6, 0, LocalTime.of(14, 30)),   // max-trades-per-day = 6 (global)
+                        5, 6, 2, 0, LocalTime.of(14, 30)),   // max-trades-per-day = 6, max-concurrent-trades = 2
                 new AppProperties.Risk(new BigDecimal("25"), new BigDecimal("25"),
                         new BigDecimal("50"), new BigDecimal("30"), new BigDecimal("25")),
                 null);
@@ -51,28 +51,71 @@ class RiskManagerTest {
     @Test
     void approvesWhenUnderGlobalLimitAndFlat() {
         when(stats.tradesOpenedOn(Mockito.any())).thenReturn(5);
-        when(stats.hasOpenPosition()).thenReturn(false);
+        when(stats.tryReserveSlot("mean-reversion-v1", 2))
+                .thenReturn(TradeStatsPort.SlotReservation.granted());
         assertThat(riskManager.evaluateEntry(signal("mean-reversion-v1")).approved()).isTrue();
     }
 
     @Test
     void rejectsSixthPlusTradeForEveryStrategy() {
         when(stats.tradesOpenedOn(Mockito.any())).thenReturn(6);   // global count = 6
-        when(stats.hasOpenPosition()).thenReturn(false);
         for (String id : new String[]{"first-candle-breakout-v1", "supertrend-flip-v1",
                 "multi-confluence-trend-v1", "mean-reversion-v1"}) {
             RiskManager.Decision d = riskManager.evaluateEntry(signal(id));
             assertThat(d.approved()).as("strategy %s must be blocked at 6/6", id).isFalse();
             assertThat(d.reason()).contains("Daily trade limit reached");
         }
+        // Daily limit gate rejects before the concurrent-trade slot is ever touched.
+        Mockito.verify(stats, Mockito.never()).tryReserveSlot(Mockito.anyString(), Mockito.anyInt());
     }
 
     @Test
-    void rejectsWhenAPositionIsAlreadyOpen() {
+    void rejectsAtMaxConcurrentTrades() {
         when(stats.tradesOpenedOn(Mockito.any())).thenReturn(0);
-        when(stats.hasOpenPosition()).thenReturn(true);
+        // Both slots taken by OTHER strategies — not a same-strategy block, a capacity block.
+        when(stats.tryReserveSlot("mean-reversion-v1", 2))
+                .thenReturn(TradeStatsPort.SlotReservation.blockedByCap());
         RiskManager.Decision d = riskManager.evaluateEntry(signal("mean-reversion-v1"));
         assertThat(d.approved()).isFalse();
-        assertThat(d.reason()).contains("already open");
+        assertThat(d.reason()).contains("Maximum concurrent trades reached (2/2)");
+    }
+
+    @Test
+    void approvesSecondConcurrentTradeWhenOneSlotFree() {
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(1);
+        when(stats.tryReserveSlot("supertrend-flip-v1", 2))
+                .thenReturn(TradeStatsPort.SlotReservation.granted());   // 1 open (different strategy), 1 free slot
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("supertrend-flip-v1"));
+        assertThat(d.approved()).isTrue();
+    }
+
+    @Test
+    void rejectsReEntryWhileSameStrategyAlreadyActive() {
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(1);
+        when(stats.tryReserveSlot("first-candle-breakout-v1", 2))
+                .thenReturn(TradeStatsPort.SlotReservation.blockedBySameStrategy(42L));
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("first-candle-breakout-v1"));
+        assertThat(d.approved()).isFalse();
+        assertThat(d.reason())
+                .contains("ENTRY BLOCKED")
+                .contains("strategy=first-candle-breakout-v1")
+                .contains("tradeId=42");
+    }
+
+    @Test
+    void rejectsReEntryWhileSameStrategyEntryStillInFlight() {
+        // Blocking trade hasn't filled yet (no id known) — message must not fabricate one.
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(0);
+        when(stats.tryReserveSlot("first-candle-breakout-v1", 2))
+                .thenReturn(TradeStatsPort.SlotReservation.blockedBySameStrategy(null));
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("first-candle-breakout-v1"));
+        assertThat(d.approved()).isFalse();
+        assertThat(d.reason()).contains("ENTRY BLOCKED").contains("entry in flight");
+    }
+
+    @Test
+    void releaseReservedSlotDelegatesToTradeStatsPort() {
+        riskManager.releaseReservedSlot("first-candle-breakout-v1");
+        Mockito.verify(stats).releaseSlot("first-candle-breakout-v1");
     }
 }

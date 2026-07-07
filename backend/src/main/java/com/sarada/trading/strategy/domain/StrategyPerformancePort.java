@@ -2,6 +2,7 @@ package com.sarada.trading.strategy.domain;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Port the strategy module uses to read per-strategy trading performance without
@@ -17,7 +18,7 @@ public interface StrategyPerformancePort {
             BigDecimal realized,
             BigDecimal unrealized,
             int trades,
-            OpenPositionBrief openPosition   // null when flat
+            List<OpenPositionBrief> openPositions   // empty when flat; up to maxConcurrentTrades entries
     ) {}
 
     record OpenPositionBrief(

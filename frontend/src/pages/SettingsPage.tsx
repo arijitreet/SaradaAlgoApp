@@ -85,6 +85,7 @@ function RuntimeCard() {
         </Row>
         <Row label="Candle interval">{trading ? `${trading.candleMinutes} min` : "—"}</Row>
         <Row label="Max trades / day">{trading?.maxTradesPerDay ?? "—"}</Row>
+        <Row label="Max concurrent trades">{trading?.maxConcurrentTrades ?? "—"}</Row>
         <Row label="Quantity">
           {trading ? `${trading.quantityLots} lot × ${trading.lotSize}` : "—"}
         </Row>

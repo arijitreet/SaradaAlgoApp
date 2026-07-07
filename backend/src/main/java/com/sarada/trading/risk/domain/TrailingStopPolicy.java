@@ -1,6 +1,8 @@
 package com.sarada.trading.risk.domain;
 
 import com.sarada.trading.common.config.AppProperties;
+import com.sarada.trading.strategy.application.FirstCandleBreakoutStrategy;
+import com.sarada.trading.strategy.application.MultiConfluenceTrendStrategy;
 import com.sarada.trading.strategy.application.SupertrendFlipStrategy;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +27,18 @@ public class TrailingStopPolicy {
     public AppProperties.Risk riskFor(String strategyId) {
         if (SupertrendFlipStrategy.ID.equals(strategyId)) {
             return props.strategy().supertrendFlip().toRisk();
+        }
+        if (FirstCandleBreakoutStrategy.ID.equals(strategyId)) {
+            // Initial SL only — target1/target2/target2StopOffset/trailStepPoints stay shared defaults.
+            return new AppProperties.Risk(props.strategy().firstCandleBreakout().stopLossPoints(),
+                    defaultRisk.target1Points(), defaultRisk.target2Points(),
+                    defaultRisk.target2StopOffset(), defaultRisk.trailStepPoints());
+        }
+        if (MultiConfluenceTrendStrategy.ID.equals(strategyId)) {
+            // Initial SL only — target1/target2/target2StopOffset/trailStepPoints stay shared defaults.
+            return new AppProperties.Risk(props.strategy().multiConfluenceTrend().stopLossPoints(),
+                    defaultRisk.target1Points(), defaultRisk.target2Points(),
+                    defaultRisk.target2StopOffset(), defaultRisk.trailStepPoints());
         }
         return defaultRisk;
     }

@@ -20,7 +20,8 @@ interface LiveState {
   selectedStrategyId: string | null;
   /** Convenience: indicators for the currently selected strategy (or null if none). */
   indicators: IndicatorsView | null;
-  position: PositionView | null;
+  /** Every currently OPEN position, keyed by id — up to maxConcurrentTrades entries. */
+  positions: Record<number, PositionView>;
   pnl: PnlSummary | null;
   session: SessionStatus | null;
   connection: ConnectionView | null;
@@ -38,7 +39,7 @@ export const useLiveStore = create<LiveState>((set, get) => ({
   indicatorsMap: {},
   selectedStrategyId: null,
   indicators: null,
-  position: null,
+  positions: {},
   pnl: null,
   session: null,
   connection: null,
@@ -80,7 +81,15 @@ export const useLiveStore = create<LiveState>((set, get) => ({
     liveSocket.subscribe(TOPICS.signals, (p) => set({ lastSignal: p as SignalView }));
     liveSocket.subscribe(TOPICS.position, (p) => {
       const position = p as PositionView;
-      set({ position: position.status === "OPEN" ? position : null });
+      set((state) => {
+        const positions = { ...state.positions };
+        if (position.status === "OPEN") {
+          positions[position.id] = position;
+        } else {
+          delete positions[position.id];
+        }
+        return { positions };
+      });
     });
     liveSocket.subscribe(TOPICS.feed, (p) => {
       const entry = p as FeedEntry;

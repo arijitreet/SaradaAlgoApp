@@ -21,18 +21,24 @@ const STAGE_STEPS = [
 const signedInr = (v: number) => `${v >= 0 ? "+" : ""}${fmtInrPrecise(v)}`;
 
 export function ActiveTradePanel() {
-  const livePosition = useLiveStore((s) => s.position);
-  // Seed from the DB-backed endpoint so an open position survives page loads /
-  // app restarts; live WS updates take over as soon as ticks flow.
+  const livePositions = useLiveStore((s) => s.positions);
+  // Seed from the DB-backed endpoint so open positions survive page loads /
+  // app restarts; live WS updates take over (and win on conflict) as soon as ticks flow.
   const { data: activePositions } = useActivePositions();
-  const position = livePosition ?? activePositions?.[0] ?? null;
   const exit = useExitPosition();
 
-  const edge = position
-    ? position.unrealizedPnl >= 0
-      ? "rgba(16,185,129,0.5)"
-      : "rgba(244,63,94,0.5)"
-    : "rgba(99,102,241,0.22)";
+  const byId = new Map<number, PositionView>();
+  for (const p of activePositions ?? []) byId.set(p.id, p);
+  for (const p of Object.values(livePositions)) byId.set(p.id, p);
+  const positions = [...byId.values()].sort((a, b) => a.id - b.id);
+
+  const worstPnl = positions.length > 0 ? Math.min(...positions.map((p) => p.unrealizedPnl)) : 0;
+  const edge =
+    positions.length === 0
+      ? "rgba(99,102,241,0.22)"
+      : worstPnl >= 0
+        ? "rgba(16,185,129,0.5)"
+        : "rgba(244,63,94,0.5)";
 
   return (
     <GlassCard
@@ -41,81 +47,37 @@ export function ActiveTradePanel() {
       transition={{ delay: 0.05, type: "spring", stiffness: 300, damping: 28 }}
     >
       <CardHeader
-        title="Active Trade"
+        title={positions.length > 1 ? "Active Trades" : "Active Trade"}
         subtitle="Tick-level stop management"
         right={
-          position && (
-            <Badge variant={position.optionType === "CE" ? "success" : "danger"}>
-              {position.optionType === "CE" ? "LONG CALL" : "LONG PUT"}
+          positions.length > 0 && (
+            <Badge variant="accent">
+              {positions.length} OPEN
             </Badge>
           )
         }
       />
 
       <AnimatePresence mode="wait">
-        {position ? (
+        {positions.length > 0 ? (
           <motion.div
-            key={position.id}
+            key="positions"
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 300, damping: 28 }}
-            className="flex flex-1 flex-col"
+            className="flex flex-1 flex-col gap-4"
           >
-            <div className="flex items-baseline justify-between">
-              <div>
-                <div className="text-sm font-semibold text-white">
-                  NIFTY {position.strike.toFixed(0)} {position.optionType}
-                  <span className="ml-1.5 font-normal text-slate-500">
-                    · {fmtDate(position.expiry)} exp
-                  </span>
-                </div>
-                <div className="mt-1 font-mono text-[11px] text-slate-600">
-                  {position.tradingsymbol}
-                </div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  {position.quantity} qty · opened {fmtTime(position.openedAt)}
-                </div>
-              </div>
-              <div className="text-right">
-                <AnimatedNumber
-                  value={position.unrealizedPnl}
-                  formatter={signedInr}
-                  className={cn("block text-2xl font-extrabold", pnlColor(position.unrealizedPnl))}
+            {positions.map((position, i) => (
+              <div key={position.id}>
+                {i > 0 && <div className="mb-4 border-t border-white/[0.06]" />}
+                <PositionCard
+                  position={position}
+                  onExit={() => exit.mutate(position.id)}
+                  exitPending={exit.isPending}
                 />
-                <div className="text-[11px] text-slate-500">unrealized</div>
               </div>
-            </div>
-
-            {/* price ladder */}
-            <div className="mt-4 grid grid-cols-4 gap-2">
-              <Stat label="Entry" value={position.entryPrice} />
-              <Stat label="LTP" value={position.lastPrice} highlight />
-              <Stat label="Stop" value={position.stopLoss} tone="loss" />
-              <Stat label="T2" value={position.target2} tone="profit" />
-            </div>
-
-            {/* progress entry → T2 */}
-            <ProgressRail
-              entry={position.entryPrice}
-              ltp={position.lastPrice}
-              stop={position.stopLoss}
-              target={position.target2}
-            />
-
-            {/* risk-stage ladder INITIAL → BREAKEVEN → LOCKED → TRAILING */}
-            <RiskStageLadder stage={position.riskStage} />
-
-            <div className="mt-auto flex items-center justify-end pt-4">
-              <Button
-                variant="danger"
-                size="sm"
-                disabled={exit.isPending}
-                onClick={() => exit.mutate(position.id)}
-              >
-                <LogOut size={14} /> Exit now
-              </Button>
-            </div>
+            ))}
           </motion.div>
         ) : (
           <motion.div
@@ -145,6 +107,76 @@ export function ActiveTradePanel() {
         )}
       </AnimatePresence>
     </GlassCard>
+  );
+}
+
+function PositionCard({
+  position,
+  onExit,
+  exitPending,
+}: {
+  position: PositionView;
+  onExit: () => void;
+  exitPending: boolean;
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-baseline justify-between">
+        <div>
+          <div className="text-sm font-semibold text-white">
+            NIFTY {position.strike.toFixed(0)} {position.optionType}
+            <Badge
+              variant={position.optionType === "CE" ? "success" : "danger"}
+              className="ml-2 align-middle"
+            >
+              {position.optionType === "CE" ? "LONG CALL" : "LONG PUT"}
+            </Badge>
+            <span className="ml-1.5 font-normal text-slate-500">
+              · {fmtDate(position.expiry)} exp
+            </span>
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-slate-600">
+            {position.tradingsymbol}
+          </div>
+          <div className="mt-0.5 text-xs text-slate-500">
+            {position.quantity} qty · opened {fmtTime(position.openedAt)}
+          </div>
+        </div>
+        <div className="text-right">
+          <AnimatedNumber
+            value={position.unrealizedPnl}
+            formatter={signedInr}
+            className={cn("block text-2xl font-extrabold", pnlColor(position.unrealizedPnl))}
+          />
+          <div className="text-[11px] text-slate-500">unrealized</div>
+        </div>
+      </div>
+
+      {/* price ladder */}
+      <div className="mt-4 grid grid-cols-4 gap-2">
+        <Stat label="Entry" value={position.entryPrice} />
+        <Stat label="LTP" value={position.lastPrice} highlight />
+        <Stat label="Stop" value={position.stopLoss} tone="loss" />
+        <Stat label="T2" value={position.target2} tone="profit" />
+      </div>
+
+      {/* progress entry → T2 */}
+      <ProgressRail
+        entry={position.entryPrice}
+        ltp={position.lastPrice}
+        stop={position.stopLoss}
+        target={position.target2}
+      />
+
+      {/* risk-stage ladder INITIAL → BREAKEVEN → LOCKED → TRAILING */}
+      <RiskStageLadder stage={position.riskStage} />
+
+      <div className="mt-4 flex items-center justify-end">
+        <Button variant="danger" size="sm" disabled={exitPending} onClick={onExit}>
+          <LogOut size={14} /> Exit now
+        </Button>
+      </div>
+    </div>
   );
 }
 

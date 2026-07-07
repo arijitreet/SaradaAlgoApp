@@ -47,6 +47,7 @@ public record AppProperties(
             LocalTime firstCandleStart,
             int candleMinutes,
             int maxTradesPerDay,
+            int maxConcurrentTrades,
             int expiryRolloverDays,
             LocalTime expiryRolloverCutoff
     ) {
@@ -74,7 +75,8 @@ public record AppProperties(
                 int emaSlow,
                 int atrPeriod,
                 BigDecimal minAtrPoints,
-                int srLookback
+                int srLookback,
+                BigDecimal stopLossPoints
         ) {}
 
         public record SupertrendFlip(
@@ -100,7 +102,8 @@ public record AppProperties(
                 BigDecimal multiplier,  // Supertrend band multiplier
                 int htfEmaFast,         // 9 EMA on 15-min closes (higher-timeframe trend)
                 int htfEmaSlow,         // 21 EMA on 15-min closes
-                int strikeOffset
+                int strikeOffset,
+                BigDecimal stopLossPoints
         ) {}
 
         public record MeanReversion(
