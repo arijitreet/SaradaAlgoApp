@@ -51,4 +51,12 @@ public final class DomainEvents {
 
     /** Broker WS feed connectivity: CONNECTED / RECONNECTING / DISCONNECTED. */
     public record BrokerConnectionChanged(String state, String detail) {}
+
+    /**
+     * A signal that was previously rejected due to insufficient funds is eligible
+     * for retry. Published by PendingRetryService when a position closes; consumed
+     * by StrategyEngine which records a fresh SignalEntity and re-emits SignalGenerated
+     * so the full normal entry gate runs again.
+     */
+    public record RetrySignalRequested(TradeSignal signal) {}
 }

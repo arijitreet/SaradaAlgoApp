@@ -99,6 +99,28 @@ public class StrategyEngine {
                 strategy.id(), strategy.snapshot(), strategy.health(), Instant.now()));
     }
 
+    /**
+     * Re-emits a funds-rejected signal through the full normal entry gate. Applies
+     * the same session/window guards as a live signal; if either fails, the retry
+     * is silently discarded (gate would have blocked it anyway).
+     */
+    @EventListener
+    public void onRetrySignalRequested(DomainEvents.RetrySignalRequested event) {
+        com.sarada.trading.common.market.TradeSignal signal = event.signal();
+        if (!session.isRunning() || !clock.isWithinSession()) {
+            log.info("[RETRY] {} suppressed — session not active at retry time", signal.strategyId());
+            return;
+        }
+        if (!timeWindows.isActive(signal.strategyId())) {
+            log.info("[RETRY] {} suppressed — outside time window at retry time", signal.strategyId());
+            return;
+        }
+        SignalEntity entity = signals.save(SignalEntity.from(signal, clock.tradingDay()));
+        log.info("[RETRY] Re-emitting signalId={} for {} {} @ {} (funds-rejection retry)",
+                entity.getId(), signal.strategyId(), signal.type(), signal.triggerPrice());
+        events.publishEvent(new DomainEvents.SignalGenerated(entity.getId(), signal));
+    }
+
     private void rolloverDayIfNeeded(Candle candle) {
         LocalDate day = clock.dayOf(candle.openTime());
         if (!day.equals(currentDay)) {

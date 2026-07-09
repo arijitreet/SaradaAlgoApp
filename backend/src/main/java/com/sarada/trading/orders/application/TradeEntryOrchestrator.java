@@ -18,6 +18,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -41,6 +42,7 @@ public class TradeEntryOrchestrator {
     private final FeedSubscriptions feedSubscriptions;
     private final LivePriceCache priceCache;
     private final OrderService orderService;
+    private final PendingRetryService pendingRetryService;
     private final SignalRepository signals;
     private final AppProperties props;
     private final TradingClock clock;
@@ -81,7 +83,11 @@ public class TradeEntryOrchestrator {
                     contract.getExchange(), OrderEntity.Side.BUY, quantity);
 
             if (order.getStatus() != OrderEntity.Status.FILLED) {
-                recordOutcome(event.signalId(), false, "Order rejected: " + order.getStatusMessage());
+                String statusMessage = order.getStatusMessage();
+                if (isInsufficientFunds(statusMessage)) {
+                    pendingRetryService.createPendingRetry(signal, statusMessage);
+                }
+                recordOutcome(event.signalId(), false, "Order rejected: " + statusMessage);
                 return;
             }
 
@@ -106,6 +112,15 @@ public class TradeEntryOrchestrator {
         while (priceCache.ltp(instrumentToken).isEmpty() && System.currentTimeMillis() < deadline) {
             Thread.sleep(200);
         }
+    }
+
+    private static boolean isInsufficientFunds(String message) {
+        if (message == null) return false;
+        String lower = message.toLowerCase(Locale.ROOT);
+        return lower.contains("insufficient fund")
+                || lower.contains("margin exceeds")
+                || lower.contains("not enough margin")
+                || lower.contains("rms:margin");
     }
 
     private void recordOutcome(long signalId, boolean accepted, String rejectReason) {
