@@ -42,6 +42,9 @@ public interface PositionRepository extends JpaRepository<PositionEntity, Long> 
 
     List<PositionEntity> findByStrategyIdAndStatus(String strategyId, PositionEntity.Status status);
 
+    List<PositionEntity> findFirst2ByTradingDayAndStatusOrderByClosedAtAsc(
+            LocalDate tradingDay, PositionEntity.Status status);
+
     /** True if this contract is currently OPEN (any day), or was opened at all today
      *  (open or already closed) — used to steer new entries away from a contract
      *  already in play. */

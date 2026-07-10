@@ -49,7 +49,8 @@ public record AppProperties(
             int maxTradesPerDay,
             int maxConcurrentTrades,
             int expiryRolloverDays,
-            LocalTime expiryRolloverCutoff
+            LocalTime expiryRolloverCutoff,
+            BigDecimal dailyProfitLockAmount
     ) {
         public int orderQuantity() {
             return lotSize * quantityLots;
@@ -70,13 +71,19 @@ public record AppProperties(
             MultiConfluenceTrend multiConfluenceTrend,
             MeanReversion meanReversion
     ) {
+        /** Per-day trade cap for this strategy, or 0 when no cap is configured. */
+        public int perDayCap(String strategyId) {
+            if ("first-candle-breakout-v1".equals(strategyId)) return firstCandleBreakout.maxTradesPerDay();
+            return 0;
+        }
         public record FirstCandleBreakout(
                 int emaFast,
                 int emaSlow,
                 int atrPeriod,
                 BigDecimal minAtrPoints,
                 int srLookback,
-                BigDecimal stopLossPoints
+                BigDecimal stopLossPoints,
+                int maxTradesPerDay
         ) {}
 
         public record SupertrendFlip(

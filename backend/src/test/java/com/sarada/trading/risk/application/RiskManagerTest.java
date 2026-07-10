@@ -5,6 +5,7 @@ import com.sarada.trading.common.config.AppProperties;
 import com.sarada.trading.common.market.SignalType;
 import com.sarada.trading.common.market.TradeSignal;
 import com.sarada.trading.common.time.TradingClock;
+import com.sarada.trading.common.ws.WsPublisher;
 import com.sarada.trading.risk.domain.TradeStatsPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import static org.mockito.Mockito.when;
 class RiskManagerTest {
 
     private TradeStatsPort stats;
+    private WsPublisher ws;
     private RiskManager riskManager;
 
     @BeforeEach
@@ -29,18 +31,25 @@ class RiskManagerTest {
         stats = Mockito.mock(TradeStatsPort.class);
         TradingClock clock = Mockito.mock(TradingClock.class);
         AuditService audit = Mockito.mock(AuditService.class);
+        ws = Mockito.mock(WsPublisher.class);
         AppProperties props = new AppProperties(
                 "Asia/Kolkata", "PAPER", null, null,
                 new AppProperties.Trading(
                         "NIFTY 50", "NSE", "NFO", 65, 1, 50,
                         LocalTime.of(9, 20), LocalTime.of(15, 5), LocalTime.of(9, 15),
-                        5, 6, 2, 0, LocalTime.of(14, 30)),   // max-trades-per-day = 6, max-concurrent-trades = 2
+                        5, 4, 2, 0, LocalTime.of(14, 30), new BigDecimal("6500")),
                 new AppProperties.Risk(new BigDecimal("25"), new BigDecimal("25"),
                         new BigDecimal("50"), new BigDecimal("30"), new BigDecimal("25")),
-                null);
+                new AppProperties.Strategy(
+                        new AppProperties.Strategy.FirstCandleBreakout(9, 15, 14, new BigDecimal("8"), 20,
+                                new BigDecimal("20"), 1),
+                        null, null, null));
         when(clock.isWithinSession()).thenReturn(true);
         when(clock.tradingDay()).thenReturn(LocalDate.of(2026, 7, 6));
-        riskManager = new RiskManager(stats, clock, props, audit);
+        // default: no extra trades by strategy, profit lock not engaged
+        when(stats.tradesOpenedOnByStrategy(Mockito.any(), Mockito.anyString())).thenReturn(0);
+        when(stats.profitLockExcessAmount(Mockito.any(), Mockito.any())).thenReturn(null);
+        riskManager = new RiskManager(stats, clock, props, audit, ws);
     }
 
     private TradeSignal signal(String strategyId) {
@@ -50,23 +59,62 @@ class RiskManagerTest {
 
     @Test
     void approvesWhenUnderGlobalLimitAndFlat() {
-        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(5);
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(3);
         when(stats.tryReserveSlot("mean-reversion-v1", 2))
                 .thenReturn(TradeStatsPort.SlotReservation.granted());
         assertThat(riskManager.evaluateEntry(signal("mean-reversion-v1")).approved()).isTrue();
     }
 
     @Test
-    void rejectsSixthPlusTradeForEveryStrategy() {
-        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(6);   // global count = 6
+    void rejectsFourthPlusTradeForEveryStrategy() {
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(4);   // global count = 4 (at limit)
         for (String id : new String[]{"first-candle-breakout-v1", "supertrend-flip-v1",
                 "multi-confluence-trend-v1", "mean-reversion-v1"}) {
             RiskManager.Decision d = riskManager.evaluateEntry(signal(id));
-            assertThat(d.approved()).as("strategy %s must be blocked at 6/6", id).isFalse();
+            assertThat(d.approved()).as("strategy %s must be blocked at 4/4", id).isFalse();
             assertThat(d.reason()).contains("Daily trade limit reached");
         }
-        // Daily limit gate rejects before the concurrent-trade slot is ever touched.
+        // Daily limit gate rejects before per-strategy cap or profit lock is ever checked.
         Mockito.verify(stats, Mockito.never()).tryReserveSlot(Mockito.anyString(), Mockito.anyInt());
+    }
+
+    @Test
+    void rejectsFcbWhenStrategyDailyCapReached() {
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(1);  // global still has room
+        when(stats.tradesOpenedOnByStrategy(Mockito.any(), Mockito.eq("first-candle-breakout-v1"))).thenReturn(1);
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("first-candle-breakout-v1"));
+        assertThat(d.approved()).isFalse();
+        assertThat(d.reason()).contains("ENTRY BLOCKED").contains("first-candle-breakout-v1").contains("daily cap (1)");
+        Mockito.verify(stats, Mockito.never()).tryReserveSlot(Mockito.anyString(), Mockito.anyInt());
+    }
+
+    @Test
+    void doesNotApplyFcbCapToOtherStrategies() {
+        // supertrend-flip has no per-strategy cap — even if FCB is exhausted, ST can still trade
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(1);
+        when(stats.tryReserveSlot("supertrend-flip-v1", 2)).thenReturn(TradeStatsPort.SlotReservation.granted());
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("supertrend-flip-v1"));
+        assertThat(d.approved()).isTrue();
+    }
+
+    @Test
+    void haltsTradingWhenProfitLockEngaged() {
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(2);
+        when(stats.profitLockExcessAmount(Mockito.any(), Mockito.eq(new BigDecimal("6500"))))
+                .thenReturn(new BigDecimal("7000"));
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("supertrend-flip-v1"));
+        assertThat(d.approved()).isFalse();
+        assertThat(d.reason()).contains("TRADING HALTED FOR DAY").contains("7000").contains("6500");
+        Mockito.verify(stats, Mockito.never()).tryReserveSlot(Mockito.anyString(), Mockito.anyInt());
+    }
+
+    @Test
+    void continuesTradingWhenFirstTwoTradesDidNotHitProfitLock() {
+        when(stats.tradesOpenedOn(Mockito.any())).thenReturn(2);
+        when(stats.profitLockExcessAmount(Mockito.any(), Mockito.any())).thenReturn(null);
+        when(stats.tryReserveSlot("supertrend-flip-v1", 2)).thenReturn(TradeStatsPort.SlotReservation.granted());
+        RiskManager.Decision d = riskManager.evaluateEntry(signal("supertrend-flip-v1"));
+        assertThat(d.approved()).isTrue();
     }
 
     @Test

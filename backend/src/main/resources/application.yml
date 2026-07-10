@@ -60,8 +60,9 @@ app:
     session-end: "15:05"
     first-candle-start: "09:15"
     candle-minutes: 5
-    max-trades-per-day: 6              # global across ALL strategies combined (resets daily)
+    max-trades-per-day: 4              # global across ALL strategies combined (resets daily)
     max-concurrent-trades: 2           # max OPEN positions at once, across ALL strategies combined
+    daily-profit-lock-amount: 6500     # halt all new entries once first 2 closed trades combined P&L exceeds this (₹)
     expiry-rollover-days: 0          # roll to next weekly on expiry day itself if past cutoff
     expiry-rollover-cutoff: "14:30"
   risk:
@@ -77,14 +78,15 @@ app:
       atr-period: 14
       min-atr-points: 8              # volatility filter: skip signals when ATR below this
       sr-lookback: 20                # candles used for support/resistance pivots
-      stop-loss-points: 15           # initial SL only — target1/target2/trail use app.risk.* as normal
+      stop-loss-points: 20         # initial SL only — target1/target2/trail use app.risk.* as normal
+      max-trades-per-day: 1        # FCB cap: at most 1 trade per day regardless of global limit
     supertrend-flip:
       atr-period: 10                 # Wilder ATR period for Supertrend
       multiplier: 3.0                # band width factor (ATR × multiplier)
       strike-offset: 0               # 0 = nearest ITM/ATM; 1 = 1-strike OTM, etc.
-      stop-loss-points: 15           # tighter SL than FCB (15 vs 25)
-      target1-points: 15
-      target2-points: 30
+      stop-loss-points: 20         # tighter SL than FCB (15 vs 25)
+      target1-points: 25
+      target2-points: 40
       target2-stop-offset: 15
       trail-step-points: 15
     multi-confluence-trend:

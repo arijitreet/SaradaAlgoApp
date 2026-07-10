@@ -34,7 +34,8 @@ public class SettingsController {
                         "sessionEnd", props.trading().sessionEnd().toString(),
                         "candleMinutes", props.trading().candleMinutes(),
                         "maxTradesPerDay", props.trading().maxTradesPerDay(),
-                        "maxConcurrentTrades", props.trading().maxConcurrentTrades()),
+                        "maxConcurrentTrades", props.trading().maxConcurrentTrades(),
+                        "dailyProfitLockAmount", props.trading().dailyProfitLockAmount()),
                 "risk", Map.of(
                         "stopLossPoints", props.risk().stopLossPoints(),
                         "target1Points", props.risk().target1Points(),
@@ -47,7 +48,8 @@ public class SettingsController {
                                 "emaSlow", props.strategy().firstCandleBreakout().emaSlow(),
                                 "atrPeriod", props.strategy().firstCandleBreakout().atrPeriod(),
                                 "minAtrPoints", props.strategy().firstCandleBreakout().minAtrPoints(),
-                                "srLookback", props.strategy().firstCandleBreakout().srLookback()),
+                                "srLookback", props.strategy().firstCandleBreakout().srLookback(),
+                                "maxTradesPerDay", props.strategy().firstCandleBreakout().maxTradesPerDay()),
                         "supertrendFlip", Map.of(
                                 "atrPeriod", st.atrPeriod(),
                                 "multiplier", st.multiplier(),

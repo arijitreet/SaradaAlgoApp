@@ -43,7 +43,7 @@ class OptionSelectorTest {
         AppProperties props = new AppProperties("Asia/Kolkata", "PAPER", null, null,
                 new AppProperties.Trading("NIFTY 50", "NSE", "NFO", 65, 1, 50,
                         LocalTime.of(9, 20), LocalTime.of(15, 5), LocalTime.of(9, 15),
-                        5, 6, 2, 0, LocalTime.of(14, 30)),
+                        5, 4, 2, 0, LocalTime.of(14, 30), new BigDecimal("6500")),
                 null, null);
         selector = new OptionSelector(instruments, instrumentService, activeTrades, props);
     }

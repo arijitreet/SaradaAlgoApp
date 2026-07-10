@@ -41,13 +41,13 @@ class StrategySignalGenerationTest {
                 new AppProperties.Trading(
                         "NIFTY 50", "NSE", "NFO", 65, 1, 50,
                         LocalTime.of(9, 20), LocalTime.of(15, 5), LocalTime.of(9, 15),
-                        5, 6, 2, 0, LocalTime.of(14, 30)),
+                        5, 4, 2, 0, LocalTime.of(14, 30), new BigDecimal("6500")),
                 new AppProperties.Risk(
                         new BigDecimal("25"), new BigDecimal("25"), new BigDecimal("50"),
                         new BigDecimal("30"), new BigDecimal("25")),
                 new AppProperties.Strategy(
                         new AppProperties.Strategy.FirstCandleBreakout(9, 15, 14, new BigDecimal("8"), 20,
-                                new BigDecimal("15")),
+                                new BigDecimal("15"), 1),
                         new AppProperties.Strategy.SupertrendFlip(10, new BigDecimal("3.0"), 0,
                                 new BigDecimal("15"), new BigDecimal("15"), new BigDecimal("30"),
                                 new BigDecimal("15"), new BigDecimal("15")),

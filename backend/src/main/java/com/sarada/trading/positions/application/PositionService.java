@@ -236,6 +236,22 @@ public class PositionService implements TradeStatsPort, StrategyPerformancePort,
     }
 
     @Override
+    public int tradesOpenedOnByStrategy(LocalDate tradingDay, String strategyId) {
+        return positions.countByTradingDayAndStrategyId(tradingDay, strategyId);
+    }
+
+    @Override
+    public BigDecimal profitLockExcessAmount(LocalDate tradingDay, BigDecimal threshold) {
+        List<PositionEntity> firstTwo = positions.findFirst2ByTradingDayAndStatusOrderByClosedAtAsc(
+                tradingDay, PositionEntity.Status.CLOSED);
+        if (firstTwo.size() < 2) return null;
+        BigDecimal combined = firstTwo.stream()
+                .map(PositionEntity::getRealizedPnl)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return combined.compareTo(threshold) > 0 ? combined : null;
+    }
+
+    @Override
     public synchronized TradeStatsPort.SlotReservation tryReserveSlot(String strategyId, int maxConcurrentTrades) {
         Long existing = activeByStrategy.get(strategyId);
         if (existing != null) {

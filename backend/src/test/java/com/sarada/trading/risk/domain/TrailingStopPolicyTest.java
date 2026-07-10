@@ -29,7 +29,7 @@ class TrailingStopPolicyTest {
                         new BigDecimal("25")),
                 new AppProperties.Strategy(
                         new AppProperties.Strategy.FirstCandleBreakout(9, 15, 14, new BigDecimal("8"), 20,
-                                new BigDecimal("15")),
+                                new BigDecimal("15"), 1),
                         new AppProperties.Strategy.SupertrendFlip(10, new BigDecimal("3.0"), 0,
                                 new BigDecimal("15"),
                                 new BigDecimal("15"),

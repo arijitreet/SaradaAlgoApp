@@ -4,10 +4,13 @@ import com.sarada.trading.common.audit.AuditService;
 import com.sarada.trading.common.config.AppProperties;
 import com.sarada.trading.common.market.TradeSignal;
 import com.sarada.trading.common.time.TradingClock;
+import com.sarada.trading.common.ws.WsPublisher;
 import com.sarada.trading.risk.domain.TradeStatsPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
 
 @Slf4j
 @Service
@@ -18,6 +21,7 @@ public class RiskManager {
     private final TradingClock clock;
     private final AppProperties props;
     private final AuditService audit;
+    private final WsPublisher ws;
 
     public record Decision(boolean approved, String reason) {
         static Decision approve() {
@@ -38,6 +42,24 @@ public class RiskManager {
         if (tradesToday >= props.trading().maxTradesPerDay()) {
             return rejected(signal, "Daily trade limit reached (" + tradesToday + "/"
                     + props.trading().maxTradesPerDay() + " across all strategies)");
+        }
+        int strategyCap = props.strategy().perDayCap(signal.strategyId());
+        if (strategyCap > 0) {
+            int strategyCount = tradeStats.tradesOpenedOnByStrategy(clock.tradingDay(), signal.strategyId());
+            if (strategyCount >= strategyCap) {
+                return rejected(signal, "ENTRY BLOCKED: " + signal.strategyId()
+                        + " daily cap (" + strategyCap + ") reached");
+            }
+        }
+        BigDecimal lockThreshold = props.trading().dailyProfitLockAmount();
+        if (lockThreshold != null && lockThreshold.signum() > 0) {
+            BigDecimal lockedPnl = tradeStats.profitLockExcessAmount(clock.tradingDay(), lockThreshold);
+            if (lockedPnl != null) {
+                ws.feed("RISK", "Trading paused for today",
+                        "Daily profit target achieved (P₹" + lockedPnl + ") — no new entries until tomorrow");
+                return rejected(signal, "TRADING HALTED FOR DAY: profit lock hit (P&L="
+                        + lockedPnl + " > threshold=" + lockThreshold + ")");
+            }
         }
         int maxConcurrent = props.trading().maxConcurrentTrades();
         TradeStatsPort.SlotReservation reservation =

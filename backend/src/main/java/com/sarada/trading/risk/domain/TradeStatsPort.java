@@ -1,11 +1,20 @@
 package com.sarada.trading.risk.domain;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /** What risk needs to know about executed trades — implemented by the positions module. */
 public interface TradeStatsPort {
 
     int tradesOpenedOn(LocalDate tradingDay);
+
+    int tradesOpenedOnByStrategy(LocalDate tradingDay, String strategyId);
+
+    /**
+     * Returns the combined realized P&L of the first two CLOSED trades today if it
+     * exceeds {@code threshold}, otherwise null. Null means the lock is not engaged.
+     */
+    BigDecimal profitLockExcessAmount(LocalDate tradingDay, BigDecimal threshold);
 
     /** Outcome of {@link #tryReserveSlot}, with enough detail for a clear rejection message. */
     record SlotReservation(boolean approved, boolean blockedBySameStrategy, Long activeTradeId) {
