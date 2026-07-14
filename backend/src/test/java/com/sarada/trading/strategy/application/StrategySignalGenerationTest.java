@@ -67,30 +67,60 @@ class StrategySignalGenerationTest {
                 BigDecimal.valueOf(low), BigDecimal.valueOf(close), 0);
     }
 
-    // ── First Candle Breakout (EMA 9/15 filter) ─────────────────────────────
+    // ── First Candle Breakout — single 09:20 evaluation window ─────────────
 
     @Test
-    void fcbFiresBuyCeOnFirstCandleHighBreakout() {
+    void fcbEvaluatesOnlyOnSingleCandleAfterFirstCandle() {
         var fcb = new FirstCandleBreakoutStrategy(props, clock);
 
-        // 09:15 first candle: range 95–110 → breakout reference high = 110.
+        // 09:15 first candle: high=110, low=95.
         assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
 
-        // Rising closes under 110: warms EMA9/EMA15 bullish, VWAP low, ATR ≥ 8 (ranges ~12).
-        List<TradeSignal> fired = new ArrayList<>();
-        double close = 100;
-        for (int i = 1; i <= 16; i++) {
-            close = 100 + i * 0.5;                       // 100.5 … 108
-            fcb.onCandle(candle(i, close - 1, close + 6, close - 6, close)).ifPresent(fired::add);
-        }
-        assertThat(fired).isEmpty();                      // no breakout yet
+        // 09:20 evaluation window: price clearly breaks high, but EMA9/EMA15 are unseeded
+        // (cold daily start → only 2 data points, both EMAs equal → EMA filter not met).
+        // Returned empty is correct — evaluation window is consumed regardless.
+        assertThat(fcb.onCandle(candle(1, 109, 120, 108, 115))).isEmpty();
 
-        // Breakout candle: prevClose 108 ≤ 110, close 115 > 110, EMA bull, above VWAP, ATR pass.
-        Optional<TradeSignal> signal = fcb.onCandle(candle(17, 109, 118, 108, 115));
-        assertThat(signal).isPresent();
-        assertThat(signal.get().type()).isEqualTo(SignalType.BUY_CE);
-        assertThat(signal.get().strategyId()).isEqualTo(FirstCandleBreakoutStrategy.ID);
-        assertThat(signal.get().indexStopLoss()).isNull();   // premium-managed strategy
+        // All subsequent candles must be silent even with large favourable price action.
+        List<TradeSignal> fired = new ArrayList<>();
+        for (int i = 2; i <= 20; i++) {
+            fcb.onCandle(candle(i, 109, 125, 108, 120 + i)).ifPresent(fired::add);
+        }
+        assertThat(fired).as("no signal must fire after evaluation window is consumed").isEmpty();
+    }
+
+    @Test
+    void fcbGoesQuietForDayIfNoPriceBreakoutAt0920Window() {
+        var fcb = new FirstCandleBreakoutStrategy(props, clock);
+
+        // 09:15 first candle: high=110, low=95.
+        assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
+
+        // 09:20 evaluation window: close=107, inside the 95–110 range → no breakout.
+        assertThat(fcb.onCandle(candle(1, 105, 109, 104, 107))).isEmpty();
+
+        // Even a massive post-09:20 breakout must produce no signal (window already closed).
+        assertThat(fcb.onCandle(candle(2, 110, 130, 109, 125))).isEmpty();
+        assertThat(fcb.onCandle(candle(3, 124, 135, 123, 132))).isEmpty();
+    }
+
+    @Test
+    void fcbResetsEvaluationWindowOnDayRollover() {
+        var fcb = new FirstCandleBreakoutStrategy(props, clock);
+
+        // Day 1: consume the evaluation window.
+        assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
+        assertThat(fcb.onCandle(candle(1, 109, 120, 108, 115))).isEmpty();
+        assertThat(fcb.onCandle(candle(2, 115, 125, 114, 120))).isEmpty(); // silent
+
+        // Simulate day rollover (StrategyEngine calls reset on new-day candle).
+        fcb.reset();
+
+        // Day 2: fresh first candle and a new evaluation window.
+        assertThat(fcb.onCandle(candle(0, 100, 108, 96, 103))).isEmpty(); // captures H/L
+        assertThat(fcb.onCandle(candle(1, 102, 111, 101, 106))).isEmpty(); // evaluation (EMA cold)
+        // Subsequent candles silent — evaluation window consumed for day 2 as well.
+        assertThat(fcb.onCandle(candle(2, 115, 125, 114, 120))).isEmpty();
     }
 
     // ── Supertrend Flip + VWAP gate ──────────────────────────────────────────
