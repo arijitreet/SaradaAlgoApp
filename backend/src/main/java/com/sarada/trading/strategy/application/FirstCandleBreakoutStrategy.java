@@ -130,22 +130,22 @@ public class FirstCandleBreakoutStrategy implements TradingStrategy {
         boolean brokeLow = prevClose.compareTo(firstCandleLow) >= 0
                 && close.compareTo(firstCandleLow) < 0;
 
-        if (brokeHigh && emaBullish && aboveVwap && atrPass) {
+        if (brokeHigh) {
             lastEvaluation = "BUY_CE fired @ " + close;
             hasTradedToday = true;
             return Optional.of(signal(SignalType.BUY_CE, close,
-                    "First-candle high " + firstCandleHigh + " broken; EMA9>EMA15; price>VWAP; ATR=" + atrValue));
+                    "First-candle high " + firstCandleHigh + " broken @ 09:20 window"));
         }
-        if (brokeLow && emaBearish && belowVwap && atrPass) {
+        if (brokeLow) {
             lastEvaluation = "BUY_PE fired @ " + close;
             hasTradedToday = true;
             return Optional.of(signal(SignalType.BUY_PE, close,
-                    "First-candle low " + firstCandleLow + " broken; EMA9<EMA15; price<VWAP; ATR=" + atrValue));
+                    "First-candle low " + firstCandleLow + " broken @ 09:20 window"));
         }
 
         lastEvaluation = String.format(
-                "No setup at 09:20 window: brokeHigh=%s brokeLow=%s emaBull=%s aboveVwap=%s atrPass=%s — done for day",
-                brokeHigh, brokeLow, emaBullish, aboveVwap, atrPass);
+                "No breakout at 09:20 window: brokeHigh=%s brokeLow=%s (EMA bull=%s bear=%s aboveVwap=%s atrPass=%s) — done for day",
+                brokeHigh, brokeLow, emaBullish, emaBearish, aboveVwap, atrPass);
         log.info("[FCB] Evaluation window closed — no breakout at 09:20 candle, strategy silent for rest of day");
         return Optional.empty();
     }

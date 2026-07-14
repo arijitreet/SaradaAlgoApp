@@ -70,20 +70,55 @@ class StrategySignalGenerationTest {
     // ── First Candle Breakout — single 09:20 evaluation window ─────────────
 
     @Test
-    void fcbEvaluatesOnlyOnSingleCandleAfterFirstCandle() {
+    void fcbFiresBuyCeWhenHighBrokenAt0920Window() {
         var fcb = new FirstCandleBreakoutStrategy(props, clock);
 
         // 09:15 first candle: high=110, low=95.
         assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
 
-        // 09:20 evaluation window: price clearly breaks high, but EMA9/EMA15 are unseeded
-        // (cold daily start → only 2 data points, both EMAs equal → EMA filter not met).
-        // Returned empty is correct — evaluation window is consumed regardless.
-        assertThat(fcb.onCandle(candle(1, 109, 120, 108, 115))).isEmpty();
+        // 09:20 evaluation window: prevClose=105 ≤ 110, close=115 > 110 → BUY_CE.
+        // No EMA/VWAP/ATR filter — pure price breakout.
+        Optional<TradeSignal> signal = fcb.onCandle(candle(1, 109, 118, 108, 115));
+        assertThat(signal).isPresent();
+        assertThat(signal.get().type()).isEqualTo(SignalType.BUY_CE);
+        assertThat(signal.get().strategyId()).isEqualTo(FirstCandleBreakoutStrategy.ID);
+        assertThat(signal.get().reason()).contains("09:20 window");
 
-        // All subsequent candles must be silent even with large favourable price action.
+        // All subsequent candles must be silent (hasTradedToday + evaluationDone both set).
         List<TradeSignal> fired = new ArrayList<>();
-        for (int i = 2; i <= 20; i++) {
+        for (int i = 2; i <= 10; i++) {
+            fcb.onCandle(candle(i, 115, 130, 114, 125 + i)).ifPresent(fired::add);
+        }
+        assertThat(fired).as("no further signal after trade taken").isEmpty();
+    }
+
+    @Test
+    void fcbFiresBuyPeWhenLowBrokenAt0920Window() {
+        var fcb = new FirstCandleBreakoutStrategy(props, clock);
+
+        // 09:15 first candle: high=110, low=95.
+        assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
+
+        // 09:20 evaluation window: prevClose=105 ≥ 95, close=90 < 95 → BUY_PE.
+        Optional<TradeSignal> signal = fcb.onCandle(candle(1, 96, 97, 88, 90));
+        assertThat(signal).isPresent();
+        assertThat(signal.get().type()).isEqualTo(SignalType.BUY_PE);
+        assertThat(signal.get().reason()).contains("09:20 window");
+    }
+
+    @Test
+    void fcbEvaluationWindowConsumedEvenWithNoBreakout() {
+        var fcb = new FirstCandleBreakoutStrategy(props, clock);
+
+        // 09:15 first candle: high=110, low=95.
+        assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
+
+        // 09:20 window: close=107, inside 95–110 → no signal, but window consumed.
+        assertThat(fcb.onCandle(candle(1, 105, 109, 104, 107))).isEmpty();
+
+        // Subsequent candles silent even though they would have broken out.
+        List<TradeSignal> fired = new ArrayList<>();
+        for (int i = 2; i <= 10; i++) {
             fcb.onCandle(candle(i, 109, 125, 108, 120 + i)).ifPresent(fired::add);
         }
         assertThat(fired).as("no signal must fire after evaluation window is consumed").isEmpty();
@@ -108,19 +143,21 @@ class StrategySignalGenerationTest {
     void fcbResetsEvaluationWindowOnDayRollover() {
         var fcb = new FirstCandleBreakoutStrategy(props, clock);
 
-        // Day 1: consume the evaluation window.
+        // Day 1: first candle captured; evaluation window fires BUY_CE (close=115 > high=110).
         assertThat(fcb.onCandle(candle(0, 100, 110, 95, 105))).isEmpty();
-        assertThat(fcb.onCandle(candle(1, 109, 120, 108, 115))).isEmpty();
+        assertThat(fcb.onCandle(candle(1, 109, 118, 108, 115)).map(TradeSignal::type))
+                .contains(SignalType.BUY_CE);
         assertThat(fcb.onCandle(candle(2, 115, 125, 114, 120))).isEmpty(); // silent
 
         // Simulate day rollover (StrategyEngine calls reset on new-day candle).
         fcb.reset();
 
-        // Day 2: fresh first candle and a new evaluation window.
-        assertThat(fcb.onCandle(candle(0, 100, 108, 96, 103))).isEmpty(); // captures H/L
-        assertThat(fcb.onCandle(candle(1, 102, 111, 101, 106))).isEmpty(); // evaluation (EMA cold)
-        // Subsequent candles silent — evaluation window consumed for day 2 as well.
-        assertThat(fcb.onCandle(candle(2, 115, 125, 114, 120))).isEmpty();
+        // Day 2: fresh first candle (high=108, low=96); evaluation window active again.
+        assertThat(fcb.onCandle(candle(0, 100, 108, 96, 103))).isEmpty();
+        // 09:20 window: close=106 within 96–108, no breakout → empty, window consumed.
+        assertThat(fcb.onCandle(candle(1, 103, 107, 102, 106))).isEmpty();
+        // Subsequent candle (even with breakout price) must be silent.
+        assertThat(fcb.onCandle(candle(2, 107, 120, 106, 116))).isEmpty();
     }
 
     // ── Supertrend Flip + VWAP gate ──────────────────────────────────────────
